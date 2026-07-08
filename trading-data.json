@@ -1,0 +1,290 @@
+{
+  "positions": [
+    {
+      "id": "pos_byd",
+      "branche": "Autoind.",
+      "titel": "BYD",
+      "symbol": "BYD:XNYS",
+      "kursAktuell": "86,865",
+      "notiz": "aus Excel · April-Lose 4:1-split-adjustiert",
+      "tx": [
+        {
+          "id": "imp1",
+          "typ": "kauf",
+          "datum": "2025-04-23",
+          "stueck": "40",
+          "kurs": "11.185",
+          "gebuehr": "1"
+        },
+        {
+          "id": "imp2",
+          "typ": "kauf",
+          "datum": "2025-04-29",
+          "stueck": "40",
+          "kurs": "10.52",
+          "gebuehr": "1"
+        },
+        {
+          "id": "imp3",
+          "typ": "kauf",
+          "datum": "2025-07-04",
+          "stueck": "35",
+          "kurs": "13.16",
+          "gebuehr": "1"
+        },
+        {
+          "id": "imp4",
+          "typ": "kauf",
+          "datum": "2025-08-04",
+          "stueck": "35",
+          "kurs": "12.515",
+          "gebuehr": "1"
+        },
+        {
+          "id": "imp5",
+          "typ": "kauf",
+          "datum": "2025-08-15",
+          "stueck": "16",
+          "kurs": "14.5",
+          "gebuehr": "1"
+        },
+        {
+          "id": "imp6",
+          "typ": "kauf",
+          "datum": "2025-11-11",
+          "stueck": "30",
+          "kurs": "11.615",
+          "gebuehr": "1"
+        },
+        {
+          "id": "imp7",
+          "typ": "kauf",
+          "datum": "2025-11-21",
+          "stueck": "50",
+          "kurs": "10.125",
+          "gebuehr": "1"
+        },
+        {
+          "id": "imp8",
+          "typ": "verkauf",
+          "datum": "2025-12-29",
+          "stueck": "50",
+          "kurs": "10.52",
+          "gebuehr": "1"
+        },
+        {
+          "id": "imp9",
+          "typ": "kauf",
+          "datum": "2025-11-24",
+          "stueck": "50",
+          "kurs": "10.47",
+          "gebuehr": "1"
+        },
+        {
+          "id": "imp10",
+          "typ": "verkauf",
+          "datum": "2025-12-29",
+          "stueck": "50",
+          "kurs": "10.52",
+          "gebuehr": "0"
+        },
+        {
+          "id": "imp11",
+          "typ": "kauf",
+          "datum": "2026-02-26",
+          "stueck": "40",
+          "kurs": "10.275",
+          "gebuehr": "1"
+        },
+        {
+          "id": "imp12",
+          "typ": "verkauf",
+          "datum": "2026-03-02",
+          "stueck": "40",
+          "kurs": "10.745",
+          "gebuehr": "1"
+        },
+        {
+          "id": "imp13",
+          "typ": "kauf",
+          "datum": "2026-03-05",
+          "stueck": "60",
+          "kurs": "10.265",
+          "gebuehr": "1"
+        }
+      ],
+      "div": [],
+      "stop": ""
+    },
+    {
+      "id": "pos_sap",
+      "branche": "Software",
+      "titel": "SAP",
+      "symbol": "SAP:XETR",
+      "kursAktuell": "152,02",
+      "notiz": "aus Excel importiert",
+      "tx": [
+        {
+          "id": "imp14",
+          "typ": "kauf",
+          "datum": "2025-09-11",
+          "stueck": "3",
+          "kurs": "224.4",
+          "gebuehr": "1"
+        },
+        {
+          "id": "imp15",
+          "typ": "kauf",
+          "datum": "2025-09-16",
+          "stueck": "2",
+          "kurs": "214.65",
+          "gebuehr": "0"
+        },
+        {
+          "id": "imp16",
+          "typ": "kauf",
+          "datum": "2025-09-16",
+          "stueck": "1",
+          "kurs": "214.65",
+          "gebuehr": "1"
+        },
+        {
+          "id": "imp17",
+          "typ": "verkauf",
+          "datum": "2025-10-16",
+          "stueck": "1",
+          "kurs": "230.1",
+          "gebuehr": "1"
+        },
+        {
+          "id": "imp18",
+          "typ": "kauf",
+          "datum": "2025-10-29",
+          "stueck": "3",
+          "kurs": "225.5",
+          "gebuehr": "1"
+        },
+        {
+          "id": "imp19",
+          "typ": "kauf",
+          "datum": "2025-11-26",
+          "stueck": "2",
+          "kurs": "204.85",
+          "gebuehr": "1"
+        },
+        {
+          "id": "imp20",
+          "typ": "verkauf",
+          "datum": "2026-01-19",
+          "stueck": "2",
+          "kurs": "197.68",
+          "gebuehr": "1"
+        },
+        {
+          "id": "imp21",
+          "typ": "kauf",
+          "datum": "2026-01-29",
+          "stueck": "5",
+          "kurs": "164.62",
+          "gebuehr": "1"
+        },
+        {
+          "id": "imp22",
+          "typ": "kauf",
+          "datum": "2026-02-04",
+          "stueck": "5",
+          "kurs": "162.06",
+          "gebuehr": "1"
+        },
+        {
+          "id": "imp23",
+          "typ": "verkauf",
+          "datum": "2026-02-10",
+          "stueck": "5",
+          "kurs": "176.14",
+          "gebuehr": "1"
+        },
+        {
+          "id": "imp24",
+          "typ": "kauf",
+          "datum": "2026-03-20",
+          "stueck": "4",
+          "kurs": "152.0",
+          "gebuehr": "1"
+        },
+        {
+          "id": "imp25",
+          "typ": "kauf",
+          "datum": "2026-04-07",
+          "stueck": "3",
+          "kurs": "144.94",
+          "gebuehr": "1"
+        },
+        {
+          "id": "imp26",
+          "typ": "kauf",
+          "datum": "2026-04-10",
+          "stueck": "5",
+          "kurs": "140.06",
+          "gebuehr": "1"
+        },
+        {
+          "id": "mrbo55wcytr02",
+          "typ": "kauf",
+          "datum": "2026-06-11",
+          "stueck": "4",
+          "kurs": "143,99",
+          "gebuehr": "1",
+          "notiz": ""
+        },
+        {
+          "id": "mrbo7a9nq3lkc",
+          "typ": "kauf",
+          "datum": "2026-06-19",
+          "stueck": "4",
+          "kurs": "133,37",
+          "gebuehr": "1",
+          "notiz": ""
+        },
+        {
+          "id": "mrbo8p2v5ym0n",
+          "typ": "verkauf",
+          "datum": "2026-06-02",
+          "stueck": "12",
+          "kurs": "171,42",
+          "gebuehr": "1",
+          "notiz": ""
+        },
+        {
+          "id": "mrbogpfbhjbsq",
+          "typ": "verkauf",
+          "datum": "2026-05-29",
+          "stueck": "3",
+          "kurs": "153,38",
+          "gebuehr": "1",
+          "notiz": ""
+        },
+        {
+          "id": "mrbojjvsvu7xd",
+          "typ": "verkauf",
+          "datum": "2026-04-16",
+          "stueck": "5",
+          "kurs": "150,62",
+          "gebuehr": "1",
+          "notiz": ""
+        }
+      ],
+      "div": [
+        {
+          "id": "mrboi1q1k8g6g",
+          "datum": "2026-05-08",
+          "netto": "48,74",
+          "notiz": ""
+        }
+      ],
+      "stop": ""
+    }
+  ],
+  "tombstones": {},
+  "syncedAt": 1783544663251
+}
