@@ -5,7 +5,7 @@
       "branche": "Autoind.",
       "titel": "BYD",
       "symbol": "BYD:XNYS",
-      "kursAktuell": "86,86",
+      "kursAktuell": "76,41",
       "notiz": "aus Excel · April-Lose 4:1-split-adjustiert",
       "tx": [
         {
@@ -114,13 +114,14 @@
         }
       ],
       "div": [],
-      "stop": ""
+      "stop": "",
+      "fxFrom": "USD"
     },
     {
       "id": "pos_sap",
       "branche": "Software",
       "titel": "SAP",
-      "symbol": "SAP:XETR",
+      "symbol": "SAP:XNYS",
       "kursAktuell": "152,02",
       "notiz": "aus Excel importiert",
       "tx": [
@@ -282,9 +283,10 @@
           "notiz": ""
         }
       ],
-      "stop": ""
+      "stop": "",
+      "_u": 1783619382318
     }
   ],
   "tombstones": {},
-  "syncedAt": 1783619372410
+  "syncedAt": 1783619384365
 }
