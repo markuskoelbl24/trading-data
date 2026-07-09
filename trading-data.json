@@ -5,7 +5,7 @@
       "branche": "Autoind.",
       "titel": "BYD",
       "symbol": "BYD:XNYS",
-      "kursAktuell": "86,865",
+      "kursAktuell": "86,86",
       "notiz": "aus Excel · April-Lose 4:1-split-adjustiert",
       "tx": [
         {
@@ -286,5 +286,5 @@
     }
   ],
   "tombstones": {},
-  "syncedAt": 1783544669331
+  "syncedAt": 1783576141536
 }
