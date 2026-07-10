@@ -1,0 +1,871 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Trading-Tracker (FIFO)</title>
+<style>
+  :root{
+    --bg:#0f1216; --card:#181d24; --card2:#1f2630; --line:#2a323d;
+    --txt:#e7ecf2; --muted:#8a95a3; --accent:#4c8bf5;
+    --green:#39c07a; --red:#f0554d; --amber:#e9b23a;
+    --radius:14px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--txt);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-text-size-adjust:100%}
+  body{padding:14px 12px 90px;max-width:920px;margin:0 auto}
+  h1{font-size:20px;margin:2px 0 2px}
+  .sub{color:var(--muted);font-size:12.5px;margin-bottom:14px;line-height:1.4}
+  button{font:inherit;cursor:pointer;border:none;border-radius:10px}
+  .btn{background:var(--accent);color:#fff;padding:10px 14px;font-weight:600}
+  .btn.sec{background:var(--card2);color:var(--txt);border:1px solid var(--line)}
+  .btn.ghost{background:transparent;color:var(--muted);border:1px solid var(--line);padding:7px 10px;font-size:13px}
+  .btn.sm{padding:6px 10px;font-size:13px}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .spacer{flex:1}
+  input,select{font:inherit;background:var(--card2);border:1px solid var(--line);color:var(--txt);
+    border-radius:10px;padding:10px 11px;width:100%}
+  label{font-size:12px;color:var(--muted);display:block;margin:0 0 4px}
+  .pos{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:13px 13px 11px;margin:12px 0}
+  .pos-head{display:flex;align-items:flex-start;gap:10px}
+  .badge{font-size:11px;color:var(--muted);background:var(--card2);border:1px solid var(--line);
+    padding:2px 8px;border-radius:999px;white-space:nowrap}
+  .titel{font-size:17px;font-weight:700;line-height:1.15}
+  .kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:11px 0 4px}
+  .kpi{background:var(--card2);border:1px solid var(--line);border-radius:11px;padding:9px 10px}
+  .kpi .k{font-size:11px;color:var(--muted);margin-bottom:3px}
+  .kpi .v{font-size:15.5px;font-weight:700}
+  .kpi .v2{font-size:11.5px;font-weight:600;color:var(--muted)}
+  .meta{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12.5px;color:var(--muted);margin:8px 2px 2px}
+  .meta b{color:var(--txt);font-weight:600}
+  .einstand{margin:10px 0 2px;padding:9px 11px 11px;background:var(--card2);
+    border:1px solid var(--line);border-radius:11px;font-size:13px}
+  .es-vals{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px}
+  .es-vals .lbl{color:var(--muted)}
+  .es-vals b{font-weight:700}
+  .es-vals .be-delta{margin-left:auto;font-weight:700;white-space:nowrap}
+  .g{display:inline-block;vertical-align:middle}
+  .g.ring{width:9px;height:9px;border:2px solid var(--muted);border-radius:50%;background:transparent;margin-right:1px}
+  .g.bar{width:3px;height:12px;background:var(--txt);border-radius:2px;margin-right:2px}
+  .g.dot{width:10px;height:10px;border-radius:50%;margin-right:1px}
+  .g.dot.up{background:var(--green)} .g.dot.down{background:var(--red)}
+  .es-bar{position:relative;height:22px;margin-top:11px}
+  .es-track{position:absolute;top:9px;left:2px;right:2px;height:4px;background:var(--line);border-radius:3px}
+  .es-fill{position:absolute;top:8px;height:6px;border-radius:3px;opacity:.9}
+  .es-fill.up{background:var(--green)} .es-fill.down{background:var(--red)}
+  .es-mark{position:absolute;transform:translateX(-50%)}
+  .es-mark.ring{top:2px;width:12px;height:12px;border:2px solid var(--muted);border-radius:50%;background:var(--card2)}
+  .es-mark.bar{top:0;width:3px;height:20px;background:var(--txt);border-radius:2px}
+  .es-mark.dot{top:2px;width:15px;height:15px;border-radius:50%;border:3px solid var(--card2)}
+  .es-mark.dot.up{background:var(--green)} .es-mark.dot.down{background:var(--red)}
+  .pos .kurs-inline{display:flex;align-items:center;gap:6px;margin:8px 0 2px}
+  .pos .kurs-inline input{width:110px;padding:7px 9px}
+  .pos-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:11px}
+  details{margin-top:9px;border-top:1px dashed var(--line);padding-top:8px}
+  summary{cursor:pointer;color:var(--muted);font-size:13px;list-style:none;user-select:none}
+  summary::-webkit-details-marker{display:none}
+  summary::before{content:"▸ ";color:var(--accent)}
+  details[open] summary::before{content:"▾ "}
+  .tx{display:grid;grid-template-columns:auto 1fr auto auto;gap:4px 10px;align-items:center;
+    padding:7px 2px;border-bottom:1px solid var(--line);font-size:13px}
+  .tx:last-child{border-bottom:none}
+  .tx .tag{font-size:11px;font-weight:700;padding:2px 7px;border-radius:6px;white-space:nowrap}
+  .tag.kauf{background:rgba(76,139,245,.16);color:#8fb6ff}
+  .tag.verkauf{background:rgba(233,178,58,.16);color:#f0cd75}
+  .tag.div{background:rgba(57,192,122,.16);color:#7fe0ac}
+  .tx .desc{color:var(--muted);font-size:12px}
+  .tx .amt{font-weight:700;text-align:right;white-space:nowrap}
+  .tx .txedit{color:var(--muted);background:transparent;border:1px solid var(--line);
+    border-radius:8px;padding:3px 8px;font-size:12px}
+  .pos-empty{color:var(--muted);font-size:13px;padding:6px 2px}
+  .pos.warn{border-color:var(--amber)}
+  .warnmsg{color:var(--amber);font-size:12.5px;margin:8px 2px 0}
+  .green{color:var(--green)} .red{color:var(--red)} .amber{color:var(--amber)}
+  .grp-title{font-size:12.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;
+    margin:20px 3px 2px;font-weight:700}
+  /* Portfolio-Summe */
+  .total{background:linear-gradient(180deg,var(--card2),var(--card));border:1px solid var(--line);
+    border-radius:var(--radius);padding:13px 14px;margin-bottom:6px}
+  .total .kpis{margin:8px 0 0}
+  .total .v{font-size:17px}
+  /* Overlay/Modal */
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;z-index:50;
+    align-items:flex-end;justify-content:center}
+  .overlay.on{display:flex}
+  .sheet{background:var(--card);border:1px solid var(--line);border-radius:18px 18px 0 0;
+    width:100%;max-width:520px;max-height:92vh;overflow:auto;padding:16px 15px 24px}
+  @media(min-width:560px){.overlay{align-items:center}.sheet{border-radius:18px}}
+  .sheet h2{font-size:17px;margin:2px 0 12px}
+  .field{margin-bottom:11px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .seg{display:flex;background:var(--card2);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .seg button{flex:1;background:transparent;color:var(--muted);padding:10px;font-weight:600;border-radius:0}
+  .seg button.act{background:var(--accent);color:#fff}
+  .sheet-actions{display:flex;gap:9px;margin-top:6px}
+  .sheet-actions .btn{flex:1;text-align:center}
+  .del{color:var(--red);background:transparent;border:1px solid var(--line);padding:10px 12px;border-radius:10px}
+  .fab{position:fixed;left:0;right:0;bottom:0;padding:10px 12px calc(10px + env(safe-area-inset-bottom));
+    background:linear-gradient(180deg,transparent,var(--bg) 34%);display:flex;gap:9px;max-width:920px;margin:0 auto}
+  .fab .btn{flex:1}
+  .hint{font-size:11.5px;color:var(--muted);margin-top:5px;line-height:1.4}
+  .empty-all{text-align:center;color:var(--muted);padding:40px 10px;font-size:14px;line-height:1.5}
+  .toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%) translateY(16px);
+    background:var(--green);color:#04120a;font-weight:700;padding:9px 16px;border-radius:999px;
+    font-size:13.5px;opacity:0;pointer-events:none;transition:.22s;z-index:80;
+    box-shadow:0 6px 20px rgba(0,0,0,.45)}
+  .toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+  #symResults{max-height:230px;overflow:auto;margin-top:6px}
+  .sym-hit{display:block;width:100%;text-align:left;background:var(--card2);border:1px solid var(--line);
+    color:var(--txt);border-radius:9px;padding:8px 10px;margin:5px 0;font-size:12.5px;line-height:1.35}
+  .sym-hit:active{background:var(--line)}
+</style>
+
+<h1>Trading-Tracker <span style="font-size:12px;color:var(--muted);font-weight:400">FIFO</span></h1>
+<div class="sub">Du gibst nur Käufe &amp; Verkäufe ein — die Zuordnung rechnet das Tool automatisch nach <b>FIFO</b> (wie dein Broker). „Realisiert" = steuerrelevant/Broker · „Gesamt" = deine echte Positions-Sicht · „Break-even" = Kurs, den die Reststücke für ±0 auf die ganze Position brauchen (zeigt, wie weit du den Einstieg runtergetradet hast).</div>
+
+<div id="total" class="total"></div>
+<div id="list"></div>
+
+<div class="fab">
+  <button class="btn" onclick="openPos()">+ Position</button>
+  <button class="btn sec" onclick="openBackup()">Backup</button>
+</div>
+
+<div class="overlay" id="overlay"><div class="sheet" id="sheet"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+const LS="trading_tracker_v1";
+let state=load();
+const openDetails=new Set();   // welche Buchungs-Listen offen sind (bleibt über Re-Renders erhalten)
+function captureOpenDetails(){  // Offen-Zustand aus dem aktuellen DOM übernehmen, bevor neu gerendert wird
+  document.querySelectorAll("#list details[data-pid]").forEach(d=>{
+    const id=d.getAttribute("data-pid");
+    if(d.open)openDetails.add(id); else openDetails.delete(id);
+  });
+}
+
+/* ---------- Persistenz ---------- */
+function load(){
+  let s={positions:[]};
+  try{const r=localStorage.getItem(LS);if(r)s=JSON.parse(r);}catch(e){}
+  if(!s.positions)s.positions=[];
+  if(!s.settings)s.settings={};
+  if(s.settings.divInGesamt===undefined)s.settings.divInGesamt=false; // Div. standardmäßig NICHT in Gesamt
+  if(s.settings.autoRefresh===undefined)s.settings.autoRefresh=true;   // Kurse beim Start auto-laden
+  if(!s.settings.gh)s.settings.gh={token:"",repo:"",path:"trading.json",branch:"main"}; // Sync-Config (lokal, NICHT gesynct)
+  if(s.settings.autoSync===undefined)s.settings.autoSync=true;  // nach Änderungen automatisch hochladen
+  if(!s.tombstones)s.tombstones={};   // id -> Löschzeitpunkt (ms), gegen Lösch-Zombies beim Merge
+  return s;
+}
+function save(){localStorage.setItem(LS,JSON.stringify(state));}
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
+function touch(o){ if(o)o._u=Date.now(); return o; }   // Änderungszeit markieren (für Merge)
+
+/* ---------- Parsen / Formatieren ---------- */
+function num(v){                                   // versteht "1.234,56" und "1234.56"
+  if(typeof v==="number")return v;
+  if(v==null)return 0;
+  let s=String(v).trim().replace(/\s|€/g,"");
+  if(s==="")return NaN;
+  if(s.includes(",")){s=s.replace(/\./g,"").replace(",",".");}   // deutsch
+  const n=parseFloat(s);
+  return isNaN(n)?NaN:n;
+}
+const eur=new Intl.NumberFormat("de-DE",{style:"currency",currency:"EUR",maximumFractionDigits:2});
+const pct=new Intl.NumberFormat("de-DE",{maximumFractionDigits:1});
+const numf=new Intl.NumberFormat("de-DE",{maximumFractionDigits:4});
+function feur(n){return (n==null||isNaN(n))?"–":eur.format(n);}
+function fpct(n){return (n==null||isNaN(n))?"–":(n>=0?"+":"")+pct.format(n)+" %";}
+function signEur(n){return (n>=0?"+":"")+eur.format(n);}
+function cls(n){return n>0?"green":(n<0?"red":"");}
+function fdate(iso){if(!iso)return"";const[y,m,d]=iso.split("-");return d+"."+m+"."+y.slice(2);}
+function daysBetween(a,b){return Math.round((new Date(b)-new Date(a))/864e5);}
+const today=()=>new Date().toISOString().slice(0,10);
+
+/* ---------- FIFO-Kern ---------- */
+function compute(pos){
+  // Transaktionen chronologisch (stabil nach Eingabereihenfolge)
+  const tx=(pos.tx||[]).map((t,i)=>({...t,_i:i}))
+    .sort((a,b)=> (a.datum<b.datum?-1:a.datum>b.datum?1:a._i-b._i));
+  const lots=[];            // FIFO-Schlange offener Käufe
+  let realized=0, oversell=false, buyCostAll=0;
+  const perTx={};           // Ergebnis je Verkauf (fürs Anzeigen der Paarung)
+  for(const t of tx){
+    const st=num(t.stueck), ku=num(t.kurs), ge=num(t.gebuehr)||0;
+    if(!(st>0)||isNaN(ku))continue;
+    if(t.typ==="kauf"){
+      lots.push({q:st, price:ku, fps:ge/st});      // Gebühr pro Stück
+      buyCostAll+=st*ku+ge;
+    }else{ // verkauf
+      const sfps=ge/st; let toSell=st, r=0, matched=[];
+      while(toSell>1e-9 && lots.length){
+        const lot=lots[0];
+        const q=Math.min(toSell,lot.q);
+        const proceeds=q*ku - q*sfps;
+        const cost=q*lot.price + q*lot.fps;
+        r+=proceeds-cost;
+        matched.push({q,price:lot.price});
+        lot.q-=q; toSell-=q;
+        if(lot.q<=1e-9)lots.shift();
+      }
+      if(toSell>1e-9)oversell=true;   // mehr verkauft als gehalten
+      realized+=r;
+      perTx[t.id]={realized:r, matched};
+    }
+  }
+  const openQty=lots.reduce((s,l)=>s+l.q,0);
+  const openCost=lots.reduce((s,l)=>s+l.q*(l.price+l.fps),0);
+  const avg=openQty>0?openCost/openQty:0;
+  const kurs=num(pos.kursAktuell);
+  const hasKurs=!isNaN(kurs)&&openQty>0;
+  const curVal=hasKurs?openQty*kurs:0;
+  const unreal=hasKurs?curVal-openCost:0;
+  const divs=(pos.div||[]).reduce((s,d)=>s+ (num(d.netto)||0),0);
+  const divIn=!!(state.settings&&state.settings.divInGesamt);
+  const gesamt=realized+(hasKurs?unreal:0)+(divIn?divs:0);
+  // Zeit & Jahresrendite
+  const dates=tx.map(t=>t.datum).filter(Boolean).sort();
+  const first=dates[0], last=dates[dates.length-1];
+  const closed=openQty<=1e-9;
+  const endD=closed?last:today();
+  const days=first?Math.max(1,daysBetween(first,endD)):0;
+  const gesamtPct=buyCostAll>0?gesamt/buyCostAll*100:NaN;
+  const unrealPct=openCost>0?unreal/openCost*100:NaN;
+  const jahr=(days>0&&!isNaN(gesamtPct))?gesamtPct*365/days:NaN;
+  // Einstand / "runtergetradet": erster Kaufkurs vs. effektiver Break-even
+  const firstBuy=tx.find(t=>t.typ==="kauf");
+  const erstEinstieg=firstBuy?num(firstBuy.kurs):NaN;
+  // Break-even = Kurs, bei dem GESAMT-Position (inkl. realisiert, ohne unreal) = 0
+  const breakEven=openQty>0?(openCost-realized-(divIn?divs:0))/openQty:NaN;
+  const beDelta=(!isNaN(erstEinstieg)&&!isNaN(breakEven))?breakEven-erstEinstieg:NaN;
+  const bePct=(!isNaN(beDelta)&&erstEinstieg)?beDelta/erstEinstieg*100:NaN;
+  return {tx,realized,openQty,openCost,avg,curVal,unreal,divs,gesamt,hasKurs,
+    oversell,buyCostAll,gesamtPct,unrealPct,jahr,first,last,closed,days,perTx,kurs,
+    erstEinstieg,breakEven,beDelta,bePct};
+}
+
+/* ---------- Render ---------- */
+function render(){
+  captureOpenDetails();   // offene Buchungs-Listen merken, bevor #list neu gebaut wird
+  const list=document.getElementById("list");
+  const total=document.getElementById("total");
+  if(!state.positions.length){
+    total.innerHTML="";
+    list.innerHTML='<div class="empty-all">Noch keine Position.<br>Tippe auf <b>+ Position</b>, dann Käufe/Verkäufe eintragen.</div>';
+    return;
+  }
+  // Portfolio-Summe
+  let tReal=0,tUnreal=0,tDiv=0,tCur=0,tGes=0;
+  const metrics=state.positions.map(p=>{const m=compute(p);
+    tReal+=m.realized;tDiv+=m.divs;if(m.hasKurs){tUnreal+=m.unreal;tCur+=m.curVal;}tGes+=m.gesamt;return m;});
+  const hasSym=state.positions.some(p=>(p.symbol||"").trim()&&compute(p).openQty>0);
+  const upd=state.settings.pricesUpdated;
+  total.innerHTML=`
+    <div class="row"><b style="font-size:14px">Portfolio gesamt</b>
+      <span id="syncStatus" class="lbl" style="font-size:11.5px;color:var(--muted)"></span>
+      <div class="spacer"></div>
+      ${syncReady()?`<button class="btn ghost" style="padding:5px 10px" onclick="fullSync(true)">⇅ Sync</button>`:""}
+      ${hasSym?`<button id="refreshBtn" class="btn ghost" style="padding:5px 10px" onclick="refreshPrices()">⟳ Kurse</button>`:""}
+      <span class="badge">${state.positions.length} Positionen</span></div>
+    ${hasSym&&upd?`<div class="hint" style="margin-top:2px">Kurse-Stand: ${new Date(upd).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})} Uhr · ca. ${usageToday()}/${DAILY_CAP} heute${state.settings.autoRefresh?" · Auto an":""}</div>`:""}
+    <div class="kpis">
+      <div class="kpi"><div class="k">Realisiert (FIFO)</div><div class="v ${cls(tReal)}">${signEur(tReal)}</div></div>
+      <div class="kpi"><div class="k">Unrealisiert</div><div class="v ${cls(tUnreal)}">${signEur(tUnreal)}</div></div>
+      <div class="kpi"><div class="k">Gesamt</div><div class="v ${cls(tGes)}">${signEur(tGes)}</div>
+        <div class="v2">offen: ${feur(tCur)}</div></div>
+    </div>${tDiv?`<div class="hint" style="display:flex;align-items:center;gap:8px;margin-top:8px">
+      <span>Dividenden gesamt ${feur(tDiv)}</span>
+      <button class="btn ghost" style="padding:4px 9px" onclick="toggleDiv()">
+        ${state.settings.divInGesamt?"✓ in Gesamt eingerechnet":"nicht eingerechnet · einrechnen"}</button></div>`:""}`;
+
+  // Gruppieren nach Branche
+  const groups={};
+  state.positions.forEach((p,idx)=>{const g=p.branche||"—";(groups[g]=groups[g]||[]).push(idx);});
+  list.innerHTML="";
+  Object.keys(groups).sort((a,b)=>a.localeCompare(b,"de")).forEach(g=>{
+    const gt=document.createElement("div");gt.className="grp-title";gt.textContent=g;list.appendChild(gt);
+    groups[g].forEach(idx=>list.appendChild(renderPos(state.positions[idx],metrics[idx],idx)));
+  });
+}
+
+function kpiBlock(m){
+  const gp=isNaN(m.gesamtPct)?"":`<div class="v2">${fpct(m.gesamtPct)}</div>`;
+  return `<div class="kpis">
+    <div class="kpi"><div class="k">Realisiert (FIFO)</div><div class="v ${cls(m.realized)}">${signEur(m.realized)}</div></div>
+    <div class="kpi"><div class="k">Unrealisiert</div>
+      <div class="v ${cls(m.unreal)}">${m.hasKurs?signEur(m.unreal):"–"}</div>
+      ${m.hasKurs&&!isNaN(m.unrealPct)?`<div class="v2">${fpct(m.unrealPct)}</div>`:""}</div>
+    <div class="kpi"><div class="k">Gesamt</div><div class="v ${cls(m.gesamt)}">${signEur(m.gesamt)}</div>${gp}</div>
+  </div>`;
+}
+
+function esBar(m){
+  const E=m.erstEinstieg, B=m.breakEven, N=m.hasKurs?m.kurs:NaN;
+  const vals=[E,B]; if(!isNaN(N))vals.push(N);
+  let lo=Math.min(...vals), hi=Math.max(...vals);
+  if(hi===lo){const b=lo||1; lo=b*0.98; hi=b*1.02;}
+  const pad=(hi-lo)*0.15; lo-=pad; hi+=pad;
+  const pos=v=>Math.max(0,Math.min(100,(v-lo)/(hi-lo)*100));
+  const up=!isNaN(N)&&N>=B;
+  let fill="";
+  if(!isNaN(N)){const a=Math.min(pos(B),pos(N)),b=Math.max(pos(B),pos(N));
+    fill=`<div class="es-fill ${up?"up":"down"}" style="left:${a}%;width:${b-a}%"></div>`;}
+  const deltaChip=!isNaN(m.beDelta)?`<span class="be-delta ${m.beDelta<=0?"green":"red"}">${m.beDelta<=0?"▼":"▲"} ${eur.format(Math.abs(m.beDelta))} (${pct.format(Math.abs(m.bePct))} %)</span>`:"";
+  return `<div class="einstand">
+    <div class="es-vals">
+      <span><span class="g ring"></span> <span class="lbl">Einstieg</span> <b>${feur(E)}</b></span>
+      <span><span class="g bar"></span> <span class="lbl">Break-even</span> <b class="${B<=E?"green":"red"}">${feur(B)}</b></span>
+      ${!isNaN(N)?`<span><span class="g dot ${up?"up":"down"}"></span> <span class="lbl">jetzt</span> <b>${feur(N)}</b></span>`:""}
+      ${deltaChip}
+    </div>
+    <div class="es-bar">
+      <div class="es-track"></div>
+      ${fill}
+      <div class="es-mark ring" style="left:${pos(E)}%"></div>
+      <div class="es-mark bar" style="left:${pos(B)}%"></div>
+      ${!isNaN(N)?`<div class="es-mark dot ${up?"up":"down"}" style="left:${pos(N)}%"></div>`:""}
+    </div>
+  </div>`;
+}
+
+function renderPos(p,m,idx){
+  const el=document.createElement("div");
+  el.className="pos"+(m.oversell?" warn":"");
+  const openLine = m.openQty>0
+    ? `<span><b>${numf.format(m.openQty)}</b> St. offen · Ø ${feur(m.avg)}</span>`
+    : `<span>Position geschlossen</span>`;
+  // Transaktionsliste
+  let txHtml="";
+  const allEntries=[
+    ...m.tx.map(t=>({...t,_kind:"tx"})),
+    ...(p.div||[]).map(d=>({...d,_kind:"div"}))
+  ].sort((a,b)=> (a.datum<b.datum?-1:a.datum>b.datum?1:0));
+  if(!allEntries.length){txHtml='<div class="pos-empty">Noch keine Buchung.</div>';}
+  else for(const e of allEntries){
+    if(e._kind==="div"){
+      txHtml+=`<div class="tx"><span class="tag div">Div</span>
+        <span class="desc">${fdate(e.datum)}${e.notiz?" · "+esc(e.notiz):""}</span>
+        <span class="amt green">${signEur(num(e.netto)||0)}</span>
+        <button class="txedit" onclick="openDiv('${p.id}','${e.id}')">✎</button></div>`;
+    }else{
+      const st=num(e.stueck),ku=num(e.kurs),ge=num(e.gebuehr)||0;
+      const wert=e.typ==="kauf"?-(st*ku+ge):(st*ku-ge);
+      const r=m.perTx[e.id];
+      let extra="";
+      if(e.typ==="verkauf"&&r){
+        const parts=r.matched.map(x=>`${numf.format(x.q)}@${feur(x.price)}`).join(" + ");
+        extra=` · FIFO: ${parts||"–"} → <b class="${cls(r.realized)}">${signEur(r.realized)}</b>`;
+      }
+      txHtml+=`<div class="tx">
+        <span class="tag ${e.typ}">${e.typ==="kauf"?"Kauf":"Verk."}</span>
+        <span class="desc">${fdate(e.datum)} · ${numf.format(st)}×${feur(ku)}${ge?` (Geb ${feur(ge)})`:""}${extra}${e.notiz?" · "+esc(e.notiz):""}</span>
+        <span class="amt ${e.typ==="kauf"?"":cls(wert)}">${e.typ==="kauf"?feur(-wert):"+"+eur.format(wert)}</span>
+        <button class="txedit" onclick="openTx('${p.id}','${e.id}')">✎</button></div>`;
+    }
+  }
+  el.innerHTML=`
+    <div class="pos-head">
+      <div style="flex:1">
+        <div class="titel">${esc(p.titel||"(ohne Titel)")}</div>
+        <div class="row" style="margin-top:4px;gap:6px">
+          ${p.branche?`<span class="badge">${esc(p.branche)}</span>`:""}
+          ${p.stop?`<span class="badge">Stop ${feur(num(p.stop))}</span>`:""}
+          ${m.first?`<span class="badge">${fdate(m.first)}${m.closed&&m.last!==m.first?"–"+fdate(m.last):m.closed?"":" …"}</span>`:""}
+        </div>
+      </div>
+      <button class="txedit" style="margin-top:2px" onclick="openPos('${p.id}')">✎</button>
+    </div>
+    ${kpiBlock(m)}
+    ${m.openQty>0&&!isNaN(m.erstEinstieg)?esBar(m):""}
+    <div class="meta">
+      ${openLine}
+      ${m.openQty>0?`<span>Kurs jetzt: <b>${m.hasKurs?feur(m.kurs):"—"}</b>${p.fxFrom?` <span class="lbl">(≈ aus ${esc(p.fxFrom)})</span>`:""} → Wert ${feur(m.curVal)}</span>`:""}
+      ${m.divs?`<span>Div ${feur(m.divs)}</span>`:""}
+      ${!isNaN(m.jahr)?`<span>p.a. <b class="${cls(m.jahr)}">${fpct(m.jahr)}</b> · ${m.days} T</span>`:""}
+    </div>
+    ${m.openQty>0?`<div class="kurs-inline">
+      <label style="margin:0">Kurs jetzt</label>
+      <input inputmode="decimal" value="${p.kursAktuell??""}" placeholder="z.B. 152,02"
+        onchange="setKurs('${p.id}',this.value)">
+    </div>`:""}
+    ${m.oversell?`<div class="warnmsg">⚠︎ Es wurde mehr verkauft als (bisher) gekauft — prüfe die Stückzahlen.</div>`:""}
+    <div class="pos-actions">
+      <button class="btn sm" onclick="openTx('${p.id}')">+ Kauf/Verkauf</button>
+      <button class="btn sec sm" onclick="openDiv('${p.id}')">+ Dividende</button>
+    </div>
+    <details data-pid="${p.id}" ${openDetails.has(p.id)?"open":""}><summary>Buchungen (${allEntries.length})</summary>${txHtml}</details>
+  `;
+  return el;
+}
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+
+/* ---------- Kurs schnell setzen ---------- */
+function setKurs(pid,val){const p=find(pid);if(!p)return;p.kursAktuell=val;p.fxFrom="";touch(p);save();render();syncPushLater();}
+function toggleDiv(){state.settings.divInGesamt=!state.settings.divInGesamt;save();render();}
+function find(pid){return state.positions.find(p=>p.id===pid);}
+
+/* ---------- Live-Kurse (Twelve Data, CORS-offen, Gratis-Key) ---------- */
+const DAILY_CAP=800, RESERVE=5, AUTO_THROTTLE_MS=60000;
+let priceBusy=false;
+function usageToday(){
+  const u=state.settings.priceUsage;
+  return (u && u.date===today()) ? (u.count||0) : 0;
+}
+function addUsage(n){
+  const cur=(state.settings.priceUsage && state.settings.priceUsage.date===today())
+    ? state.settings.priceUsage : {date:today(),count:0};
+  cur.count=(cur.count||0)+n; state.settings.priceUsage=cur;
+}
+function openSymbols(){
+  return [...new Set(state.positions
+    .filter(p=>compute(p).openQty>0 && (p.symbol||"").trim())
+    .map(p=>p.symbol.trim()))];
+}
+// Wechselkurs CUR→EUR (kostenlos, ohne Key): Frankfurter/ECB, Fallback open.er-api
+async function fxToEur(cur){
+  if(!cur || cur==="EUR") return 1;
+  try{ const j=await (await fetch("https://api.frankfurter.dev/v1/latest?base="+encodeURIComponent(cur)+"&symbols=EUR",{cache:"no-store"})).json();
+    if(j&&j.rates&&j.rates.EUR>0) return j.rates.EUR; }catch(e){}
+  try{ const j=await (await fetch("https://open.er-api.com/v6/latest/"+encodeURIComponent(cur),{cache:"no-store"})).json();
+    if(j&&j.rates&&j.rates.EUR>0) return j.rates.EUR; }catch(e){}
+  return null;
+}
+async function refreshPrices(auto){
+  if(priceBusy)return;
+  const key=(state.settings.apiKey||"").trim();
+  const syms=openSymbols();
+  if(!key){ if(!auto)alert("Bitte zuerst einen (kostenlosen) Twelve-Data API-Key hinterlegen:\nBackup → API-Key."); return; }
+  if(!syms.length){ if(!auto)alert("Keine offene Position mit Symbol. Trage bei einer Position ein Symbol ein (🔍 im Positions-Editor)."); return; }
+  if(auto){
+    // Kurz-Sperre gegen schnelles Neuladen
+    if(state.settings.pricesUpdated && Date.now()-state.settings.pricesUpdated < AUTO_THROTTLE_MS)return;
+    // Tagesreserve: Auto stoppt, wenn nur noch RESERVE Credits frei wären (manuell geht weiter)
+    if(usageToday()+syms.length > DAILY_CAP-RESERVE)return;
+  }
+  priceBusy=true;
+  const btn=document.getElementById("refreshBtn"); if(btn)btn.textContent="⟳ lädt…";
+  try{
+    // Pro Symbol EINZELN abfragen (/quote liefert Kurs UND Währung) → ein ungültiges Symbol blockiert die anderen nicht.
+    // Format "SYM:MIC" (z.B. SAP:XNYS) → symbol=SAP&mic_code=XNYS für den richtigen Börsenplatz.
+    const quotes={}; const fail=[];
+    for(const raw of syms){
+      const i=raw.indexOf(":");
+      const sym=i>0?raw.slice(0,i):raw, mic=i>0?raw.slice(i+1):"";
+      const url="https://api.twelvedata.com/quote?symbol="+encodeURIComponent(sym)+
+        (mic?"&mic_code="+encodeURIComponent(mic):"")+"&apikey="+encodeURIComponent(key);
+      try{
+        const d=await (await fetch(url)).json();
+        const px=d&&(d.close!==undefined?d.close:d.price);
+        if(d && !d.code && px!==undefined && px!==null && px!=="")
+          quotes[raw]={price:+px, cur:(d.currency||"EUR")};
+        else fail.push(raw+" — "+((d&&(d.message||d.code))||"keine Kursdaten"));
+      }catch(e){ fail.push(raw+" — Netzwerkfehler"); }
+    }
+    // Fremdwährungen → EUR-Wechselkurse holen (je Währung einmal, kostenlos ohne Key)
+    const curs=[...new Set(Object.values(quotes).map(q=>q.cur).filter(c=>c&&c!=="EUR"))];
+    const fx={};
+    for(const c of curs){ const r=await fxToEur(c); if(r) fx[c]=r; }
+    let ok=0;
+    for(const p of state.positions){
+      const s=(p.symbol||"").trim();
+      if(!s || compute(p).openQty<=0)continue;
+      const q=quotes[s]; if(!q)continue;
+      let eur=q.price, from="";
+      if(q.cur && q.cur!=="EUR"){
+        if(fx[q.cur]===undefined){ if(!fail.includes(s+" — €-Umrechnung ("+q.cur+") nicht verfügbar"))fail.push(s+" — €-Umrechnung ("+q.cur+") nicht verfügbar"); continue; }
+        eur=q.price*fx[q.cur]; from=q.cur;
+      }
+      p.kursAktuell=(+(eur.toFixed(eur<10?4:2))+"").replace(".",","); p.fxFrom=from;
+      ok++;
+    }
+    addUsage(syms.length);                 // Credits (ca.) mitzählen
+    state.settings.pricesUpdated=Date.now();
+    save(); render();
+    if(auto){ if(ok)toast("✓ Kurse aktualisiert"); }
+    else if(fail.length)alert(ok+" Kurs(e) aktualisiert.\n\nKein Kurs für:\n• "+fail.join("\n• ")+
+      "\n\nTipp: \"symbol not found\"/Xetra-Meldung → Gratis-Tarif deckt diesen Börsenplatz evtl. nicht. Dann im Positions-Editor die US-Notierung testen (z.B. nur SAP, in USD) oder den Kurs manuell setzen.");
+    else if(!auto)toast("✓ "+ok+" Kurse aktualisiert");
+  }catch(e){
+    if(!auto)alert("Abruf fehlgeschlagen (offline oder Quelle nicht erreichbar).");
+  }finally{
+    priceBusy=false;
+    const b=document.getElementById("refreshBtn"); if(b)b.textContent="⟳ Kurse";
+  }
+}
+
+/* ---------- Symbol-Suche (Twelve Data reference data, kein Key nötig) ---------- */
+async function symSearch(){
+  const q=val("f_symbol").trim().split(":")[0];
+  const box=document.getElementById("symResults");
+  if(!box)return;
+  if(!q){box.innerHTML='<div class="hint">Erst Name oder Kürzel oben eintippen (z.B. SAP), dann 🔍.</div>';return;}
+  box.innerHTML='<div class="hint">Suche…</div>';
+  try{
+    const r=await fetch("https://api.twelvedata.com/symbol_search?symbol="+encodeURIComponent(q)+"&outputsize=15");
+    const data=(await r.json()).data||[];
+    if(!data.length){box.innerHTML='<div class="hint">Nichts gefunden. Anderes Kürzel probieren.</div>';return;}
+    box.innerHTML=data.map(x=>{
+      const store=x.symbol+(x.mic_code?":"+x.mic_code:"");
+      const cur=x.currency||"";
+      const eurStar=cur==="EUR"?" ★":"";
+      const label=`<b>${esc(x.symbol)}</b> · ${esc(x.exchange||x.mic_code||"")} · ${esc(cur)}${eurStar}<br><span class="lbl" style="font-size:11.5px">${esc(x.instrument_name||"")} · ${esc(x.country||"")}</span>`;
+      return `<button type="button" class="sym-hit" onclick="pickSym('${esc(store)}')">${label}</button>`;
+    }).join("");
+  }catch(e){box.innerHTML='<div class="hint red">Suche fehlgeschlagen (offline?).</div>';}
+}
+function pickSym(store){
+  const inp=document.getElementById("f_symbol"); if(inp)inp.value=store;
+  const box=document.getElementById("symResults");
+  if(box)box.innerHTML='<div class="hint green">Gewählt: <b>'+esc(store)+'</b> — unten „Speichern".</div>';
+}
+
+/* ---------- GitHub-Sync (privates Repo, nur Positionen; Keys bleiben lokal) ---------- */
+let syncBusy=false, pushTimer=null;
+function ghCfg(){const g=state.settings.gh||{};return {token:(g.token||"").trim(),repo:(g.repo||"").trim(),
+  path:(g.path||"trading.json").trim(),branch:(g.branch||"main").trim()};}
+function syncReady(){const c=ghCfg();return !!(c.token&&c.repo&&c.path);}
+function b64encode(str){return btoa(String.fromCharCode.apply(null,new TextEncoder().encode(str)));}
+function b64decode(b64){return new TextDecoder().decode(Uint8Array.from(atob(b64),c=>c.charCodeAt(0)));}
+function u(o){return (o&&o._u)||0;}
+
+// Nur Positionen + Tombstones werden gesynct (KEINE settings/Token/Keys)
+function syncPayload(){return {positions:state.positions, tombstones:state.tombstones||{}, syncedAt:Date.now()};}
+
+// Zwei Listen (tx bzw. div) nach id + Änderungszeit + Tombstones zusammenführen
+function mergeList(a,b,tomb){
+  const map={};
+  for(const it of (a||[]).concat(b||[])){
+    if(!it||!it.id)continue;
+    if(!map[it.id] || u(it)>=u(map[it.id])) map[it.id]=it;
+  }
+  return Object.values(map).filter(it=>!(tomb[it.id] && tomb[it.id]>=u(it)));
+}
+// Gesamt-Merge zweier Zustände
+function mergeStates(local,remote){
+  const tomb={};
+  for(const src of [local.tombstones||{}, remote.tombstones||{}])
+    for(const id in src) tomb[id]=Math.max(tomb[id]||0, src[id]||0);
+  const byId={};
+  for(const p of (local.positions||[]).concat(remote.positions||[])){
+    if(!p||!p.id)continue;
+    if(!byId[p.id]) byId[p.id]={L:null,R:null};
+  }
+  const lmap={},rmap={};
+  (local.positions||[]).forEach(p=>p&&p.id&&(lmap[p.id]=p));
+  (remote.positions||[]).forEach(p=>p&&p.id&&(rmap[p.id]=p));
+  const positions=[];
+  for(const id in byId){
+    const L=lmap[id], R=rmap[id];
+    const base = (!R || u(L)>=u(R)) ? L : R;   // Skalarfelder: neuere Position gewinnt
+    if(!base) continue;
+    const merged={...base};
+    merged.tx  = mergeList(L&&L.tx,  R&&R.tx,  tomb);
+    merged.div = mergeList(L&&L.div, R&&R.div, tomb);
+    // Position gelöscht? (Tombstone neuer als letzte Änderung UND keine überlebenden Buchungen erzwingen Behalt)
+    if(tomb[id] && tomb[id]>=u(base)) continue;
+    positions.push(merged);
+  }
+  return {positions, tombstones:tomb};
+}
+
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+async function ghGet(){
+  const c=ghCfg();
+  const [owner,repo]=c.repo.split("/");
+  // Cache umgehen: eindeutiger Parameter + no-store → GitHub liefert die AKTUELLE sha (nicht die gecachte)
+  const url=`https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(c.path)}?ref=${encodeURIComponent(c.branch)}&_=${Date.now()}`;
+  const r=await fetch(url,{cache:"no-store",headers:{Authorization:"Bearer "+c.token,Accept:"application/vnd.github+json"}});
+  if(r.status===404) return {data:{positions:[],tombstones:{}}, sha:null};
+  if(!r.ok) throw new Error("GET "+r.status+" "+(await r.text()).slice(0,140));
+  const j=await r.json();
+  let data={positions:[],tombstones:{}};
+  try{ data=JSON.parse(b64decode(j.content.replace(/\n/g,""))); }catch(e){}
+  return {data, sha:j.sha};
+}
+async function ghPut(payload, sha){
+  const c=ghCfg();
+  const [owner,repo]=c.repo.split("/");
+  const url=`https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(c.path)}`;
+  const body={message:"trading sync "+new Date().toISOString(), content:b64encode(JSON.stringify(payload,null,2)), branch:c.branch};
+  if(sha) body.sha=sha;
+  const r=await fetch(url,{method:"PUT",cache:"no-store",headers:{Authorization:"Bearer "+c.token,Accept:"application/vnd.github+json"},body:JSON.stringify(body)});
+  const txt=await r.text();
+  if(!r.ok){ const err=new Error("PUT "+r.status+" "+txt.slice(0,140)); err.status=r.status; throw err; }
+  try{ return JSON.parse(txt).content.sha; }catch(e){ return null; }
+}
+
+// Voll-Sync: holen → mergen → zurückschreiben; bei sha-Konflikt (409) mit frischer sha erneut versuchen
+async function fullSync(manual){
+  if(syncBusy || !syncReady()){ if(manual&&!syncReady())alert("Bitte zuerst Repo + Token im Backup-Menü eintragen."); return; }
+  syncBusy=true; setSyncStatus("Sync…");
+  try{
+    let done=false, lastErr=null;
+    for(let attempt=0; attempt<5 && !done; attempt++){
+      const {data:remote,sha}=await ghGet();     // cache-umgehend → aktuelle sha
+      const merged=mergeStates({positions:state.positions,tombstones:state.tombstones}, remote);
+      state.positions=merged.positions; state.tombstones=merged.tombstones;
+      save(); render();
+      try{ await ghPut(syncPayload(), sha); done=true; }
+      catch(e){ lastErr=e; if(e.status===409){ await sleep(500); continue; } throw e; } // sha veraltet → neu holen
+    }
+    if(!done) throw lastErr||new Error("Konflikt nach mehreren Versuchen");
+    state.settings.syncedAt=Date.now(); save(); render();
+    setSyncStatus("");
+    if(manual)toast("✓ Synchronisiert");
+  }catch(e){
+    setSyncStatus("Sync-Fehler");
+    if(manual)alert("Sync fehlgeschlagen:\n"+e.message+"\n\nRepo (owner/repo), Token-Rechte (Contents: Read/Write) und Branch prüfen.");
+  }finally{ syncBusy=false; }
+}
+function syncPushLater(){ // nach Änderungen automatisch (gebündelt) hochladen
+  if(!syncReady() || state.settings.autoSync===false) return;
+  clearTimeout(pushTimer);
+  pushTimer=setTimeout(()=>fullSync(false), 1500);
+}
+function setSyncStatus(t){ const e=document.getElementById("syncStatus"); if(e)e.textContent=t; }
+
+/* ---------- Modal-Infrastruktur ---------- */
+const ov=document.getElementById("overlay"), sheet=document.getElementById("sheet");
+function openSheet(html){sheet.innerHTML=html;ov.classList.add("on");}
+function closeSheet(){ov.classList.remove("on");sheet.innerHTML="";}
+ov.addEventListener("click",e=>{if(e.target===ov)closeSheet();});
+
+/* ---------- Position anlegen/bearbeiten ---------- */
+function openPos(pid){
+  const p=pid?find(pid):null;
+  openSheet(`
+    <h2>${p?"Position bearbeiten":"Neue Position"}</h2>
+    <div class="two">
+      <div class="field"><label>Branche</label><input id="f_branche" value="${p?esc(p.branche||""):""}" placeholder="z.B. Rüstung"></div>
+      <div class="field"><label>Titel</label><input id="f_titel" value="${p?esc(p.titel||""):""}" placeholder="z.B. Rheinmetall"></div>
+    </div>
+    <div class="two">
+      <div class="field"><label>Stop-Kurs (optional)</label><input id="f_stop" inputmode="decimal" value="${p?esc(p.stop||""):""}"></div>
+      <div class="field"><label>Kurs jetzt (optional)</label><input id="f_kurs" inputmode="decimal" value="${p?esc(p.kursAktuell||""):""}"></div>
+    </div>
+    <div class="field"><label>Symbol (Live-Kurs, optional)</label>
+      <div style="display:flex;gap:8px">
+        <input id="f_symbol" style="flex:1" value="${p?esc(p.symbol||""):""}" placeholder="z.B. SAP:XETR · leer = manuell">
+        <button type="button" class="btn sec" style="white-space:nowrap;padding:10px 12px" onclick="symSearch()">🔍 suchen</button>
+      </div>
+      <div id="symResults"></div>
+    </div>
+    <div class="field"><label>Notiz</label><input id="f_notiz" value="${p?esc(p.notiz||""):""}"></div>
+    <div class="hint">Nur für börsengelistete Titel. Zertifikate/KOs: leer lassen → manuell. <b>Achtung Gratis-Tarif:</b> nur <b>US-Börsen</b> (NYSE/NASDAQ, USD). Deutsche Börsen (Xetra/€) brauchen einen Bezahl-Tarif → solche Titel besser <b>manuell</b> pflegen. Tipp: <b>🔍 suchen</b>, eine US-Zeile wählen.</div>
+    <div class="sheet-actions">
+      ${p?`<button class="del" onclick="delPos('${p.id}')">Löschen</button>`:""}
+      <button class="btn sec" onclick="closeSheet()">Abbr.</button>
+      <button class="btn" onclick="savePos('${p?p.id:""}')">Speichern</button>
+    </div>`);
+}
+function savePos(pid){
+  const titel=val("f_titel").trim();
+  if(!titel){alert("Bitte einen Titel angeben.");return;}
+  let p=pid?find(pid):null;
+  if(!p){p={id:uid(),tx:[],div:[]};state.positions.push(p);}
+  p.branche=val("f_branche").trim();p.titel=titel;
+  p.stop=val("f_stop").trim();p.kursAktuell=val("f_kurs").trim();p.notiz=val("f_notiz").trim();
+  p.symbol=val("f_symbol").trim();
+  touch(p);
+  save();closeSheet();render();syncPushLater();
+}
+function delPos(pid){
+  if(!confirm("Ganze Position mit allen Buchungen löschen?"))return;
+  const p=find(pid);
+  if(p){ state.tombstones[pid]=Date.now(); (p.tx||[]).forEach(t=>state.tombstones[t.id]=Date.now()); (p.div||[]).forEach(d=>state.tombstones[d.id]=Date.now()); }
+  state.positions=state.positions.filter(p=>p.id!==pid);save();closeSheet();render();syncPushLater();
+}
+
+/* ---------- Kauf/Verkauf ---------- */
+let txTyp="kauf";
+function openTx(pid,tid){
+  const p=find(pid);const t=tid?(p.tx||[]).find(x=>x.id===tid):null;
+  txTyp=t?t.typ:"kauf";
+  openSheet(`
+    <h2>${t?"Buchung bearbeiten":"Kauf / Verkauf"} · ${esc(p.titel)}</h2>
+    <div class="field"><div class="seg">
+      <button id="seg_kauf" class="${txTyp==="kauf"?"act":""}" onclick="segTx('kauf')">Kauf</button>
+      <button id="seg_verkauf" class="${txTyp==="verkauf"?"act":""}" onclick="segTx('verkauf')">Verkauf</button>
+    </div></div>
+    <div class="two">
+      <div class="field"><label>Datum</label><input id="f_datum" type="date" value="${t?t.datum:today()}"></div>
+      <div class="field"><label>Stück</label><input id="f_stueck" inputmode="decimal" value="${t?esc(t.stueck):""}" placeholder="z.B. 60"></div>
+    </div>
+    <div class="two">
+      <div class="field"><label>Kurs</label><input id="f_kurs" inputmode="decimal" value="${t?esc(t.kurs):""}" placeholder="z.B. 3,63"></div>
+      <div class="field"><label>Gebühr (€)</label><input id="f_geb" inputmode="decimal" value="${t?esc(t.gebuehr??""):""}" placeholder="0"></div>
+    </div>
+    <div class="field"><label>Notiz (optional)</label><input id="f_txnotiz" value="${t?esc(t.notiz||""):""}"></div>
+    <div class="hint">Verkäufe werden automatisch den ältesten Käufen zugeordnet (FIFO) — du musst nichts paaren.${t?"":" Nach dem Speichern bleibt das Fenster offen für die nächste Buchung."}</div>
+    <div class="sheet-actions">
+      ${t?`<button class="del" onclick="delTx('${pid}','${tid}')">Löschen</button>
+      <button class="btn sec" onclick="closeSheet()">Abbr.</button>
+      <button class="btn" onclick="saveTx('${pid}','${tid}')">Speichern</button>`
+      :`<button class="btn sec" onclick="closeSheet()">Fertig</button>
+      <button class="btn" onclick="saveTx('${pid}','')">Speichern &amp; weiter</button>`}
+    </div>`);
+}
+function segTx(tp){txTyp=tp;
+  document.getElementById("seg_kauf").className=tp==="kauf"?"act":"";
+  document.getElementById("seg_verkauf").className=tp==="verkauf"?"act":"";}
+function saveTx(pid,tid){
+  const p=find(pid);
+  const st=num(val("f_stueck")), ku=num(val("f_kurs"));
+  if(!(st>0)){alert("Bitte gültige Stückzahl eingeben.");return;}
+  if(isNaN(ku)){alert("Bitte gültigen Kurs eingeben.");return;}
+  let t=tid?(p.tx).find(x=>x.id===tid):null;
+  if(!t){t={id:uid()};p.tx=p.tx||[];p.tx.push(t);}
+  t.typ=txTyp;t.datum=val("f_datum")||today();
+  t.stueck=val("f_stueck").trim();t.kurs=val("f_kurs").trim();
+  t.gebuehr=val("f_geb").trim();t.notiz=val("f_txnotiz").trim();
+  touch(t);
+  save();syncPushLater();
+  if(tid){closeSheet();render();return;}          // Bearbeiten: schließen
+  // Neue Buchung: im Eingabemodus bleiben
+  const lastTyp=t.typ, lastDatum=t.datum;
+  render();                                        // Hintergrund live aktualisieren
+  openTx(pid);                                     // frisches Formular, gleiche Position
+  txTyp=lastTyp; segTx(lastTyp);                   // Kauf/Verkauf-Wahl beibehalten
+  const dt=document.getElementById("f_datum"); if(dt)dt.value=lastDatum;  // Datum beibehalten
+  const stf=document.getElementById("f_stueck"); if(stf)stf.focus();
+  toast(lastTyp==="kauf"?"✓ Kauf gespeichert":"✓ Verkauf gespeichert");
+}
+function delTx(pid,tid){const p=find(pid);state.tombstones[tid]=Date.now();p.tx=p.tx.filter(x=>x.id!==tid);save();closeSheet();render();syncPushLater();}
+
+/* ---------- Dividende ---------- */
+function openDiv(pid,did){
+  const p=find(pid);const d=did?(p.div||[]).find(x=>x.id===did):null;
+  openSheet(`
+    <h2>${d?"Dividende bearbeiten":"Dividende"} · ${esc(p.titel)}</h2>
+    <div class="two">
+      <div class="field"><label>Datum</label><input id="f_ddatum" type="date" value="${d?d.datum:today()}"></div>
+      <div class="field"><label>Netto (€)</label><input id="f_dnetto" inputmode="decimal" value="${d?esc(d.netto):""}" placeholder="z.B. 12,40"></div>
+    </div>
+    <div class="field"><label>Notiz (optional)</label><input id="f_dnotiz" value="${d?esc(d.notiz||""):""}"></div>
+    <div class="sheet-actions">
+      ${d?`<button class="del" onclick="delDiv('${pid}','${did}')">Löschen</button>`:""}
+      <button class="btn sec" onclick="closeSheet()">Abbr.</button>
+      <button class="btn" onclick="saveDiv('${pid}','${d?did:""}')">Speichern</button>
+    </div>`);
+}
+function saveDiv(pid,did){
+  const p=find(pid);const n=num(val("f_dnetto"));
+  if(isNaN(n)){alert("Bitte Netto-Betrag eingeben.");return;}
+  let d=did?(p.div).find(x=>x.id===did):null;
+  if(!d){d={id:uid()};p.div=p.div||[];p.div.push(d);}
+  d.datum=val("f_ddatum")||today();d.netto=val("f_dnetto").trim();d.notiz=val("f_dnotiz").trim();
+  touch(d);
+  save();closeSheet();render();syncPushLater();
+}
+function delDiv(pid,did){const p=find(pid);state.tombstones[did]=Date.now();p.div=p.div.filter(x=>x.id!==did);save();closeSheet();render();syncPushLater();}
+
+/* ---------- Backup (Export/Import) ---------- */
+function openBackup(){
+  openSheet(`
+    <h2>Backup &amp; Einstellungen</h2>
+    <div class="field">
+      <label>Twelve-Data API-Key (für Live-Kurse)</label>
+      <input id="f_apikey" value="${esc(state.settings.apiKey||"")}" placeholder="einmalig eintragen" autocomplete="off">
+      <div class="hint">Kostenlos unter <b>twelvedata.com</b> registrieren → „API Key" kopieren. 800 Abrufe/Tag gratis. Nur nötig, wenn du Live-Kurse willst; sonst leer lassen.</div>
+    </div>
+    <div class="sheet-actions" style="margin-bottom:12px">
+      <button class="btn" style="flex:1" onclick="saveApiKey()">Key speichern</button>
+    </div>
+    <div class="field" style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+      <button class="btn ${state.settings.autoRefresh?"":"sec"}" style="min-width:132px" onclick="toggleAuto()">
+        Auto-Kurse: ${state.settings.autoRefresh?"An":"Aus"}</button>
+      <div class="hint" style="margin:0;flex:1">Kurse beim Start automatisch laden. Verbraucht ca. ${usageToday()}/${DAILY_CAP} Credits heute; stoppt selbst bei ${DAILY_CAP-RESERVE}, damit ${RESERVE} fürs manuelle ⟳ frei bleiben.</div>
+    </div>
+    <div style="border-top:1px solid var(--line);margin:4px 0 14px;padding-top:14px">
+      <div class="row" style="margin-bottom:8px"><b>Sync über GitHub</b><div class="spacer"></div>
+        <button class="btn ${state.settings.autoSync?"":"sec"} sm" onclick="toggleAutoSync()">Auto: ${state.settings.autoSync?"An":"Aus"}</button></div>
+      <div class="hint" style="margin:0 0 10px">Privates Repo, damit iPhone &amp; Mac dieselben Daten haben. Es werden <b>nur die Positionen</b> hochgeladen — <b>nicht</b> dein Token/API-Key.</div>
+      <div class="two">
+        <div class="field"><label>Repo (owner/name)</label><input id="f_ghrepo" value="${esc((state.settings.gh||{}).repo||"")}" placeholder="markus/trading-data" autocomplete="off"></div>
+        <div class="field"><label>Datei</label><input id="f_ghpath" value="${esc((state.settings.gh||{}).path||"trading.json")}" autocomplete="off"></div>
+      </div>
+      <div class="two">
+        <div class="field"><label>Branch</label><input id="f_ghbranch" value="${esc((state.settings.gh||{}).branch||"main")}" autocomplete="off"></div>
+        <div class="field"><label>Token (fine-grained)</label><input id="f_ghtoken" type="password" value="${esc((state.settings.gh||{}).token||"")}" placeholder="github_pat_…" autocomplete="off"></div>
+      </div>
+      <div class="hint" style="margin:0 0 10px">Token: GitHub → Settings → Developer settings → Fine-grained tokens → nur dieses Repo, <b>Contents: Read and write</b>.</div>
+      <div class="sheet-actions">
+        <button class="btn sec" style="flex:1" onclick="saveGh()">Sync speichern</button>
+        <button class="btn" style="flex:1" onclick="fullSync(true)">Jetzt synchronisieren</button>
+      </div>
+      <div class="hint" style="margin-top:8px">${state.settings.syncedAt?"Zuletzt: "+new Date(state.settings.syncedAt).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})+" Uhr":"Noch nie synchronisiert."}</div>
+    </div>
+    <div class="hint" style="margin-bottom:12px">Alle Daten liegen (auch) lokal im Browser. Für Sicherung/Umzug ohne GitHub: als Datei exportieren.</div>
+    <div class="sheet-actions" style="margin-bottom:10px">
+      <button class="btn" onclick="exportJson()">⤓ Export (.json)</button>
+      <button class="btn sec" onclick="document.getElementById('imp').click()">⤒ Import</button>
+    </div>
+    <input type="file" id="imp" accept="application/json,.json" style="display:none" onchange="importJson(this)">
+    <button class="btn ghost" style="width:100%" onclick="loadDemo()">Beispiel laden (FIFO-Demo)</button>
+    <div class="hint" style="margin-top:12px">Import <b>ersetzt</b> die aktuellen Daten.</div>
+    <div class="sheet-actions" style="margin-top:14px">
+      <button class="btn sec" style="flex:1" onclick="closeSheet()">Schließen</button>
+    </div>`);
+}
+function toggleAuto(){state.settings.autoRefresh=!state.settings.autoRefresh;save();openBackup();render();}
+function toggleAutoSync(){state.settings.autoSync=!state.settings.autoSync;save();openBackup();}
+function saveGh(){
+  state.settings.gh={token:val("f_ghtoken").trim(),repo:val("f_ghrepo").trim(),
+    path:val("f_ghpath").trim()||"trading.json",branch:val("f_ghbranch").trim()||"main"};
+  save();toast("✓ Sync gespeichert");openBackup();
+}
+function saveApiKey(){
+  state.settings.apiKey=val("f_apikey").trim();save();
+  alert(state.settings.apiKey?"API-Key gespeichert.":"API-Key gelöscht.");closeSheet();render();
+}
+function exportJson(){
+  const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);
+  a.download="trading_"+today()+".json";a.click();
+}
+function importJson(inp){
+  const f=inp.files[0];if(!f)return;
+  const rd=new FileReader();
+  rd.onload=()=>{try{const d=JSON.parse(rd.result);
+    if(!d||!Array.isArray(d.positions))throw 0;
+    if(!confirm("Aktuelle Daten durch Import ersetzen?"))return;
+    const prevKey=(state.settings&&state.settings.apiKey)||"";
+    const prevGh=(state.settings&&state.settings.gh)||null;
+    state=d;
+    if(!state.settings)state.settings={};
+    if(state.settings.divInGesamt===undefined)state.settings.divInGesamt=false;
+    if(!state.tombstones)state.tombstones={};
+    if(!state.settings.apiKey && prevKey)state.settings.apiKey=prevKey;     // Key nicht verlieren
+    if((!state.settings.gh || !state.settings.gh.token) && prevGh)state.settings.gh=prevGh; // Sync-Config/Token nicht verlieren
+    save();closeSheet();render();
+  }catch(e){alert("Datei nicht lesbar.");}};
+  rd.readAsText(f);
+}
+function loadDemo(){
+  if(!confirm("Beispieldaten laden (ersetzt aktuelle Daten)?"))return;
+  state={positions:[{
+    id:uid(),branche:"Demo",titel:"FIFO-Beispiel",stop:"",kursAktuell:"90",notiz:"",
+    tx:[
+      {id:uid(),typ:"kauf",datum:"2026-01-02",stueck:"10",kurs:"100",gebuehr:"0",notiz:"teuer gekauft"},
+      {id:uid(),typ:"kauf",datum:"2026-01-05",stueck:"10",kurs:"80",gebuehr:"0",notiz:"tiefer nachgekauft"},
+      {id:uid(),typ:"verkauf",datum:"2026-01-08",stueck:"10",kurs:"90",gebuehr:"0",notiz:"Hälfte in der Mitte verkauft"}
+    ],div:[]
+  }]};
+  save();closeSheet();render();
+}
+
+/* ---------- Helper ---------- */
+function val(id){const e=document.getElementById(id);return e?e.value:"";}
+let toastT;
+function toast(msg){const t=document.getElementById("toast");if(!t)return;
+  t.textContent=msg;t.classList.add("on");
+  clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove("on"),1400);}
+
+render();
+// Kurse beim Start automatisch laden (leise, nicht blockierend)
+if(state.settings.autoRefresh!==false) refreshPrices(true);
+// Beim Start mit GitHub abgleichen (holen → mergen → zurückschreiben)
+if(syncReady()) fullSync(false);
+</script>
