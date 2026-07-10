@@ -392,13 +392,13 @@
         },
         {
           "id": "mrf4ish8j0ajh",
-          "typ": "kauf",
+          "typ": "verkauf",
           "datum": "2025-10-16",
           "stueck": "20",
           "kurs": "29,54",
           "gebuehr": "1",
           "notiz": "",
-          "_u": 1783699321004
+          "_u": 1783699333570
         }
       ],
       "div": [
@@ -434,5 +434,5 @@
     }
   ],
   "tombstones": {},
-  "syncedAt": 1783699323045
+  "syncedAt": 1783699335604
 }
