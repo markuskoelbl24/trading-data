@@ -122,7 +122,7 @@
       "branche": "Software",
       "titel": "SAP",
       "symbol": "SAP:XNYS",
-      "kursAktuell": "152,02",
+      "kursAktuell": "138,57",
       "notiz": "aus Excel importiert",
       "tx": [
         {
@@ -284,9 +284,10 @@
         }
       ],
       "stop": "",
-      "_u": 1783619382318
+      "_u": 1783619382318,
+      "fxFrom": "USD"
     }
   ],
   "tombstones": {},
-  "syncedAt": 1783619384365
+  "syncedAt": 1783688320672
 }
