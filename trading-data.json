@@ -409,6 +409,26 @@
           "gebuehr": "1",
           "notiz": "",
           "_u": 1783699366265
+        },
+        {
+          "id": "mrf4k8h6sx92y",
+          "typ": "kauf",
+          "datum": "2025-11-10",
+          "stueck": "25",
+          "kurs": "26,59",
+          "gebuehr": "1",
+          "notiz": "",
+          "_u": 1783699388394
+        },
+        {
+          "id": "mrf4kkag5nkif",
+          "typ": "kauf",
+          "datum": "2025-12-09",
+          "stueck": "32",
+          "kurs": "26,91",
+          "gebuehr": "1",
+          "notiz": "",
+          "_u": 1783699403704
         }
       ],
       "div": [
@@ -444,5 +464,5 @@
     }
   ],
   "tombstones": {},
-  "syncedAt": 1783699368339
+  "syncedAt": 1783699405751
 }
