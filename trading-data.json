@@ -462,13 +462,13 @@
         },
         {
           "id": "mrf4m6lu3i2s6",
-          "typ": "kauf",
+          "typ": "verkauf",
           "datum": "2026-07-02",
           "stueck": "22",
           "kurs": "25,22",
           "gebuehr": "1",
           "notiz": "",
-          "_u": 1783699479282
+          "_u": 1783699485796
         }
       ],
       "div": [
@@ -504,5 +504,5 @@
     }
   ],
   "tombstones": {},
-  "syncedAt": 1783699481358
+  "syncedAt": 1783699487840
 }
