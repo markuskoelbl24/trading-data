@@ -341,7 +341,15 @@
           "_u": 1783699020348
         }
       ],
-      "div": [],
+      "div": [
+        {
+          "id": "mrf4dt4teajiv",
+          "datum": "2023-04-12",
+          "netto": "13,30",
+          "notiz": "",
+          "_u": 1783699088573
+        }
+      ],
       "branche": "",
       "titel": "Dt. Telekom",
       "stop": "",
@@ -352,5 +360,5 @@
     }
   ],
   "tombstones": {},
-  "syncedAt": 1783699062945
+  "syncedAt": 1783699090491
 }
