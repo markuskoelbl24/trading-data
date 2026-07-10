@@ -153,7 +153,7 @@
       "branche": "Software",
       "titel": "SAP",
       "symbol": "SAP:XNYS",
-      "kursAktuell": "138,1",
+      "kursAktuell": "138,11",
       "notiz": "aus Excel importiert",
       "tx": [
         {
@@ -539,13 +539,14 @@
       "kursAktuell": "25,55",
       "notiz": "",
       "symbol": "DTEGF:OTCQ",
-      "_u": 1783699699602,
-      "fxFrom": "USD"
+      "_u": 1783717980764,
+      "fxFrom": "USD",
+      "divOff": true
     }
   ],
   "tombstones": {
     "imp10": 1783716239137,
     "imp13": 1783716323861
   },
-  "syncedAt": 1783717525255
+  "syncedAt": 1783717982998
 }
