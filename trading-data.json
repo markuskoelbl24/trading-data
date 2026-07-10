@@ -329,6 +329,16 @@
           "gebuehr": "1",
           "notiz": "",
           "_u": 1783699006712
+        },
+        {
+          "id": "mrf4cchoqxkxc",
+          "typ": "kauf",
+          "datum": "2025-05-12",
+          "stueck": "15",
+          "kurs": "31,66",
+          "gebuehr": "1",
+          "notiz": "",
+          "_u": 1783699020348
         }
       ],
       "div": [],
@@ -342,5 +352,5 @@
     }
   ],
   "tombstones": {},
-  "syncedAt": 1783699008671
+  "syncedAt": 1783699029562
 }
