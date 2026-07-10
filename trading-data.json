@@ -5,7 +5,7 @@
       "branche": "Autoind.",
       "titel": "BYD",
       "symbol": "BYD:XNYS",
-      "kursAktuell": "77,12",
+      "kursAktuell": "77,16",
       "notiz": "aus Excel · April-Lose 4:1-split-adjustiert",
       "tx": [
         {
@@ -122,7 +122,7 @@
       "branche": "Software",
       "titel": "SAP",
       "symbol": "SAP:XNYS",
-      "kursAktuell": "139,54",
+      "kursAktuell": "139,61",
       "notiz": "aus Excel importiert",
       "tx": [
         {
@@ -289,7 +289,18 @@
     },
     {
       "id": "mrf05wszdwpt6",
-      "tx": [],
+      "tx": [
+        {
+          "id": "mrf49itdlhduj",
+          "typ": "kauf",
+          "datum": "0023-02-24",
+          "stueck": "19",
+          "kurs": "21,06",
+          "gebuehr": "1",
+          "notiz": "",
+          "_u": 1783698888577
+        }
+      ],
       "div": [],
       "branche": "",
       "titel": "Dt. Telekom",
@@ -301,5 +312,5 @@
     }
   ],
   "tombstones": {},
-  "syncedAt": 1783692003574
+  "syncedAt": 1783698890709
 }
