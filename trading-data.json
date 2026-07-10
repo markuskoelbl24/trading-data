@@ -293,12 +293,12 @@
         {
           "id": "mrf49itdlhduj",
           "typ": "kauf",
-          "datum": "2025-02-24",
+          "datum": "2023-02-24",
           "stueck": "19",
           "kurs": "21,06",
           "gebuehr": "1",
           "notiz": "",
-          "_u": 1783699060971
+          "_u": 1783699574257
         },
         {
           "id": "mrf4a94wfmzaa",
@@ -511,5 +511,5 @@
     }
   ],
   "tombstones": {},
-  "syncedAt": 1783699539636
+  "syncedAt": 1783699579165
 }
