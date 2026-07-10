@@ -1,6 +1,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Trading-Tracker (FIFO)</title>
+<title>Trading-Data (FIFO)</title>
 <style>
   :root{
     --bg:#0f1216; --card:#181d24; --card2:#1f2630; --line:#2a323d;
@@ -80,6 +80,18 @@
   .pos-empty{color:var(--muted);font-size:13px;padding:6px 2px}
   .pos.warn{border-color:var(--amber)}
   .warnmsg{color:var(--amber);font-size:12.5px;margin:8px 2px 0}
+  .pos.stop{border-color:var(--red)}
+  .stopmsg{color:var(--red);font-size:12.5px;margin:8px 2px 0;font-weight:600}
+  .badge.badge-red{color:#ffb4b0;border-color:var(--red);background:rgba(240,85,77,.14)}
+  .divchip{background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:999px;
+    padding:2px 9px 2px 6px;font-size:12.5px;cursor:pointer;display:inline-flex;align-items:center;gap:5px;line-height:1.5}
+  .divchip .cbox{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;
+    border-radius:4px;border:1.5px solid var(--green);background:var(--green);color:#04120a;font-size:11px;font-weight:800}
+  .divchip.off{color:var(--muted)}
+  .divchip.off .cbox{background:transparent;border-color:var(--muted)}
+  .closed-sec{margin-top:22px}
+  .closed-sec>summary.closed-sum{margin:0 3px 2px;padding:6px 0}
+  .closed-sec .pos{opacity:.82}
   .green{color:var(--green)} .red{color:var(--red)} .amber{color:var(--amber)}
   .grp-title{font-size:12.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;
     margin:20px 3px 2px;font-weight:700}
@@ -120,7 +132,7 @@
   .sym-hit:active{background:var(--line)}
 </style>
 
-<h1>Trading-Tracker <span style="font-size:12px;color:var(--muted);font-weight:400">FIFO</span></h1>
+<h1>Trading-Data <span style="font-size:12px;color:var(--muted);font-weight:400">FIFO</span></h1>
 <div class="sub">Du gibst nur Käufe &amp; Verkäufe ein — die Zuordnung rechnet das Tool automatisch nach <b>FIFO</b> (wie dein Broker). „Realisiert" = steuerrelevant/Broker · „Gesamt" = deine echte Positions-Sicht · „Break-even" = Kurs, den die Reststücke für ±0 auf die ganze Position brauchen (zeigt, wie weit du den Einstieg runtergetradet hast).</div>
 
 <div id="total" class="total"></div>
@@ -136,7 +148,8 @@
 
 <script>
 "use strict";
-const LS="trading_tracker_v1";
+const LS="trading_data_v1";
+const LS_OLD="trading_tracker_v1";   // alter Schlüssel → wird beim ersten Laden migriert
 let state=load();
 const openDetails=new Set();   // welche Buchungs-Listen offen sind (bleibt über Re-Renders erhalten)
 function captureOpenDetails(){  // Offen-Zustand aus dem aktuellen DOM übernehmen, bevor neu gerendert wird
@@ -149,10 +162,13 @@ function captureOpenDetails(){  // Offen-Zustand aus dem aktuellen DOM übernehm
 /* ---------- Persistenz ---------- */
 function load(){
   let s={positions:[]};
-  try{const r=localStorage.getItem(LS);if(r)s=JSON.parse(r);}catch(e){}
+  try{
+    let r=localStorage.getItem(LS);
+    if(!r){ const old=localStorage.getItem(LS_OLD); if(old){ localStorage.setItem(LS,old); r=old; } } // alten Speicher übernehmen
+    if(r)s=JSON.parse(r);
+  }catch(e){}
   if(!s.positions)s.positions=[];
   if(!s.settings)s.settings={};
-  if(s.settings.divInGesamt===undefined)s.settings.divInGesamt=false; // Div. standardmäßig NICHT in Gesamt
   if(s.settings.autoRefresh===undefined)s.settings.autoRefresh=true;   // Kurse beim Start auto-laden
   if(!s.settings.gh)s.settings.gh={token:"",repo:"",path:"trading.json",branch:"main"}; // Sync-Config (lokal, NICHT gesynct)
   if(s.settings.autoSync===undefined)s.settings.autoSync=true;  // nach Änderungen automatisch hochladen
@@ -223,8 +239,8 @@ function compute(pos){
   const curVal=hasKurs?openQty*kurs:0;
   const unreal=hasKurs?curVal-openCost:0;
   const divs=(pos.div||[]).reduce((s,d)=>s+ (num(d.netto)||0),0);
-  const divIn=!!(state.settings&&state.settings.divInGesamt);
-  const gesamt=realized+(hasKurs?unreal:0)+(divIn?divs:0);
+  const divCounted=!pos.divOff;   // Dividende zählt standardmäßig mit; pro Position abwählbar
+  const gesamt=realized+(hasKurs?unreal:0)+(divCounted?divs:0);
   // Zeit & Jahresrendite
   const dates=tx.map(t=>t.datum).filter(Boolean).sort();
   const first=dates[0], last=dates[dates.length-1];
@@ -238,7 +254,7 @@ function compute(pos){
   const firstBuy=tx.find(t=>t.typ==="kauf");
   const erstEinstieg=firstBuy?num(firstBuy.kurs):NaN;
   // Break-even = Kurs, bei dem GESAMT-Position (inkl. realisiert, ohne unreal) = 0
-  const breakEven=openQty>0?(openCost-realized-(divIn?divs:0))/openQty:NaN;
+  const breakEven=openQty>0?(openCost-realized-(divCounted?divs:0))/openQty:NaN;
   const beDelta=(!isNaN(erstEinstieg)&&!isNaN(breakEven))?breakEven-erstEinstieg:NaN;
   const bePct=(!isNaN(beDelta)&&erstEinstieg)?beDelta/erstEinstieg*100:NaN;
   return {tx,realized,openQty,openCost,avg,curVal,unreal,divs,gesamt,hasKurs,
@@ -257,10 +273,10 @@ function render(){
     return;
   }
   // Portfolio-Summe
-  let tReal=0,tUnreal=0,tDiv=0,tCur=0,tGes=0;
+  let tReal=0,tUnreal=0,tDiv=0,tDivOff=0,tCur=0,tGes=0;
   const metrics=state.positions.map(p=>{const m=compute(p);
-    tReal+=m.realized;tDiv+=m.divs;if(m.hasKurs){tUnreal+=m.unreal;tCur+=m.curVal;}tGes+=m.gesamt;return m;});
-  const hasSym=state.positions.some(p=>(p.symbol||"").trim()&&compute(p).openQty>0);
+    tReal+=m.realized;tDiv+=m.divs;if(p.divOff)tDivOff+=m.divs;if(m.hasKurs){tUnreal+=m.unreal;tCur+=m.curVal;}tGes+=m.gesamt;return m;});
+  const hasSym=metrics.some((m,i)=>(state.positions[i].symbol||"").trim()&&m.openQty>0);
   const upd=state.settings.pricesUpdated;
   total.innerHTML=`
     <div class="row"><b style="font-size:14px">Portfolio gesamt</b>
@@ -275,19 +291,33 @@ function render(){
       <div class="kpi"><div class="k">Unrealisiert</div><div class="v ${cls(tUnreal)}">${signEur(tUnreal)}</div></div>
       <div class="kpi"><div class="k">Gesamt</div><div class="v ${cls(tGes)}">${signEur(tGes)}</div>
         <div class="v2">offen: ${feur(tCur)}</div></div>
-    </div>${tDiv?`<div class="hint" style="display:flex;align-items:center;gap:8px;margin-top:8px">
-      <span>Dividenden gesamt ${feur(tDiv)}</span>
-      <button class="btn ghost" style="padding:4px 9px" onclick="toggleDiv()">
-        ${state.settings.divInGesamt?"✓ in Gesamt eingerechnet":"nicht eingerechnet · einrechnen"}</button></div>`:""}`;
+    </div>${tDiv?`<div class="hint" style="margin-top:8px">Dividenden gesamt ${feur(tDiv)} · zählt in „Gesamt" mit${tDivOff?` <span class="red">(${feur(tDivOff)} pro Wert abgewählt)</span>`:""}</div>`:""}`;
 
-  // Gruppieren nach Branche
-  const groups={};
-  state.positions.forEach((p,idx)=>{const g=p.branche||"—";(groups[g]=groups[g]||[]).push(idx);});
+  // Offene vs. geschlossene Positionen trennen (geschlossen = alles verkauft, aber es gab Buchungen)
+  const openIdx=[], closedIdx=[];
+  state.positions.forEach((p,idx)=>{
+    (metrics[idx].openQty<=1e-9 && metrics[idx].tx.length>0 ? closedIdx : openIdx).push(idx);
+  });
   list.innerHTML="";
+  // Offene nach Branche gruppiert
+  const groups={};
+  openIdx.forEach(idx=>{const g=state.positions[idx].branche||"—";(groups[g]=groups[g]||[]).push(idx);});
   Object.keys(groups).sort((a,b)=>a.localeCompare(b,"de")).forEach(g=>{
     const gt=document.createElement("div");gt.className="grp-title";gt.textContent=g;list.appendChild(gt);
     groups[g].forEach(idx=>list.appendChild(renderPos(state.positions[idx],metrics[idx],idx)));
   });
+  // Geschlossene in einklappbaren Bereich unten
+  if(closedIdx.length){
+    const sec=document.createElement("details");
+    sec.className="closed-sec"; sec.setAttribute("data-pid","__closed__");
+    if(openDetails.has("__closed__"))sec.open=true;
+    const sum=document.createElement("summary");
+    sum.className="grp-title closed-sum";
+    sum.textContent="Geschlossene Positionen ("+closedIdx.length+")";
+    sec.appendChild(sum);
+    closedIdx.forEach(idx=>sec.appendChild(renderPos(state.positions[idx],metrics[idx],idx)));
+    list.appendChild(sec);
+  }
 }
 
 function kpiBlock(m){
@@ -332,7 +362,9 @@ function esBar(m){
 
 function renderPos(p,m,idx){
   const el=document.createElement("div");
-  el.className="pos"+(m.oversell?" warn":"");
+  const stopVal=num(p.stop);
+  const belowStop=m.hasKurs && stopVal>0 && m.kurs<stopVal;   // Kurs unter Stop
+  el.className="pos"+(m.oversell?" warn":"")+(belowStop?" stop":"");
   const openLine = m.openQty>0
     ? `<span><b>${numf.format(m.openQty)}</b> St. offen · Ø ${feur(m.avg)}</span>`
     : `<span>Position geschlossen</span>`;
@@ -371,7 +403,7 @@ function renderPos(p,m,idx){
         <div class="titel">${esc(p.titel||"(ohne Titel)")}</div>
         <div class="row" style="margin-top:4px;gap:6px">
           ${p.branche?`<span class="badge">${esc(p.branche)}</span>`:""}
-          ${p.stop?`<span class="badge">Stop ${feur(num(p.stop))}</span>`:""}
+          ${p.stop?`<span class="badge${belowStop?" badge-red":""}">Stop ${feur(num(p.stop))}</span>`:""}
           ${m.first?`<span class="badge">${fdate(m.first)}${m.closed&&m.last!==m.first?"–"+fdate(m.last):m.closed?"":" …"}</span>`:""}
         </div>
       </div>
@@ -382,14 +414,15 @@ function renderPos(p,m,idx){
     <div class="meta">
       ${openLine}
       ${m.openQty>0?`<span>Kurs jetzt: <b>${m.hasKurs?feur(m.kurs):"—"}</b>${p.fxFrom?` <span class="lbl">(≈ aus ${esc(p.fxFrom)})</span>`:""} → Wert ${feur(m.curVal)}</span>`:""}
-      ${m.divs?`<span>Div ${feur(m.divs)}</span>`:""}
-      ${!isNaN(m.jahr)?`<span>p.a. <b class="${cls(m.jahr)}">${fpct(m.jahr)}</b> · ${m.days} T</span>`:""}
+      ${m.divs?`<button class="divchip ${p.divOff?"off":""}" onclick="toggleDivOff('${p.id}')" title="Dividende in Gesamt mitzählen">
+        <span class="cbox">${p.divOff?"":"✓"}</span> Div ${feur(m.divs)} in Gesamt</button>`:""}
     </div>
     ${m.openQty>0?`<div class="kurs-inline">
       <label style="margin:0">Kurs jetzt</label>
       <input inputmode="decimal" value="${p.kursAktuell??""}" placeholder="z.B. 152,02"
         onchange="setKurs('${p.id}',this.value)">
     </div>`:""}
+    ${belowStop?`<div class="stopmsg">⚠︎ Kurs ${feur(m.kurs)} unter Stop ${feur(stopVal)}</div>`:""}
     ${m.oversell?`<div class="warnmsg">⚠︎ Es wurde mehr verkauft als (bisher) gekauft — prüfe die Stückzahlen.</div>`:""}
     <div class="pos-actions">
       <button class="btn sm" onclick="openTx('${p.id}')">+ Kauf/Verkauf</button>
@@ -403,7 +436,7 @@ function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;","
 
 /* ---------- Kurs schnell setzen ---------- */
 function setKurs(pid,val){const p=find(pid);if(!p)return;p.kursAktuell=val;p.fxFrom="";touch(p);save();render();syncPushLater();}
-function toggleDiv(){state.settings.divInGesamt=!state.settings.divInGesamt;save();render();}
+function toggleDivOff(pid){const p=find(pid);if(!p)return;p.divOff=!p.divOff;touch(p);save();render();syncPushLater();}
 function find(pid){return state.positions.find(p=>p.id===pid);}
 
 /* ---------- Live-Kurse (Twelve Data, CORS-offen, Gratis-Key) ---------- */
@@ -773,11 +806,12 @@ function openBackup(){
     <div class="sheet-actions" style="margin-bottom:12px">
       <button class="btn" style="flex:1" onclick="saveApiKey()">Key speichern</button>
     </div>
-    <div class="field" style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+    <div class="field" style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
       <button class="btn ${state.settings.autoRefresh?"":"sec"}" style="min-width:132px" onclick="toggleAuto()">
         Auto-Kurse: ${state.settings.autoRefresh?"An":"Aus"}</button>
       <div class="hint" style="margin:0;flex:1">Kurse beim Start automatisch laden. Verbraucht ca. ${usageToday()}/${DAILY_CAP} Credits heute; stoppt selbst bei ${DAILY_CAP-RESERVE}, damit ${RESERVE} fürs manuelle ⟳ frei bleiben.</div>
     </div>
+    <div class="hint" style="margin:0 0 14px">Dividenden zählen standardmäßig in „Gesamt" mit. Einzelne Werte kannst du direkt an der Position per Häkchen abwählen.</div>
     <div style="border-top:1px solid var(--line);margin:4px 0 14px;padding-top:14px">
       <div class="row" style="margin-bottom:8px"><b>Sync über GitHub</b><div class="spacer"></div>
         <button class="btn ${state.settings.autoSync?"":"sec"} sm" onclick="toggleAutoSync()">Auto: ${state.settings.autoSync?"An":"Aus"}</button></div>
@@ -835,7 +869,6 @@ function importJson(inp){
     const prevGh=(state.settings&&state.settings.gh)||null;
     state=d;
     if(!state.settings)state.settings={};
-    if(state.settings.divInGesamt===undefined)state.settings.divInGesamt=false;
     if(!state.tombstones)state.tombstones={};
     if(!state.settings.apiKey && prevKey)state.settings.apiKey=prevKey;     // Key nicht verlieren
     if((!state.settings.gh || !state.settings.gh.token) && prevGh)state.settings.gh=prevGh; // Sync-Config/Token nicht verlieren
