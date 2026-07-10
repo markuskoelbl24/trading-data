@@ -5,7 +5,7 @@
       "branche": "Autoind.",
       "titel": "BYD",
       "symbol": "BYDDF:PINX",
-      "kursAktuell": "75,42",
+      "kursAktuell": "9,5276",
       "notiz": "aus Excel · April-Lose 4:1-split-adjustiert",
       "tx": [
         {
@@ -68,9 +68,11 @@
           "id": "imp8",
           "typ": "verkauf",
           "datum": "2025-12-29",
-          "stueck": "50",
-          "kurs": "10.52",
-          "gebuehr": "1"
+          "stueck": "100",
+          "kurs": "10,52",
+          "gebuehr": "1",
+          "notiz": "",
+          "_u": 1783716235976
         },
         {
           "id": "imp9",
@@ -514,5 +516,5 @@
     }
   ],
   "tombstones": {},
-  "syncedAt": 1783715887441
+  "syncedAt": 1783716237977
 }
