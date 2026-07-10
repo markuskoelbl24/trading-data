@@ -4,7 +4,7 @@
       "id": "pos_byd",
       "branche": "Autoind.",
       "titel": "BYD",
-      "symbol": "BYD:XNYS",
+      "symbol": "BYDDF:PINX",
       "kursAktuell": "75,42",
       "notiz": "aus Excel · April-Lose 4:1-split-adjustiert",
       "tx": [
@@ -115,7 +115,8 @@
       ],
       "div": [],
       "stop": "",
-      "fxFrom": "USD"
+      "fxFrom": "USD",
+      "_u": 1783715882632
     },
     {
       "id": "pos_sap",
@@ -513,5 +514,5 @@
     }
   ],
   "tombstones": {},
-  "syncedAt": 1783715771570
+  "syncedAt": 1783715884647
 }
