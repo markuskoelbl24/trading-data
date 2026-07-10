@@ -323,12 +323,12 @@
         {
           "id": "mrf4c1ywle43y",
           "typ": "kauf",
-          "datum": "0025-04-29",
+          "datum": "2025-04-29",
           "stueck": "10",
           "kurs": "30,99",
           "gebuehr": "1",
           "notiz": "",
-          "_u": 1783699006712
+          "_u": 1783699051063
         },
         {
           "id": "mrf4cchoqxkxc",
@@ -352,5 +352,5 @@
     }
   ],
   "tombstones": {},
-  "syncedAt": 1783699029562
+  "syncedAt": 1783699053012
 }
