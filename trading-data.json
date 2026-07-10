@@ -299,6 +299,26 @@
           "gebuehr": "1",
           "notiz": "",
           "_u": 1783698888577
+        },
+        {
+          "id": "mrf4a94wfmzaa",
+          "typ": "kauf",
+          "datum": "2023-06-07",
+          "stueck": "26",
+          "kurs": "19,14",
+          "gebuehr": "1",
+          "notiz": "",
+          "_u": 1783698922688
+        },
+        {
+          "id": "mrf4bfjo7j5a9",
+          "typ": "kauf",
+          "datum": "0025-04-25",
+          "stueck": "15",
+          "kurs": "31,19",
+          "gebuehr": "1",
+          "notiz": "",
+          "_u": 1783698977652
         }
       ],
       "div": [],
@@ -312,5 +332,5 @@
     }
   ],
   "tombstones": {},
-  "syncedAt": 1783698890709
+  "syncedAt": 1783698979694
 }
