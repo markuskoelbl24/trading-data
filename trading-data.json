@@ -5,7 +5,7 @@
       "branche": "Autoind.",
       "titel": "BYD",
       "symbol": "BYD:XNYS",
-      "kursAktuell": "76,08",
+      "kursAktuell": "75,83",
       "notiz": "aus Excel · April-Lose 4:1-split-adjustiert",
       "tx": [
         {
@@ -122,7 +122,7 @@
       "branche": "Software",
       "titel": "SAP",
       "symbol": "SAP:XNYS",
-      "kursAktuell": "137,7",
+      "kursAktuell": "137,83",
       "notiz": "aus Excel importiert",
       "tx": [
         {
@@ -512,5 +512,5 @@
     }
   ],
   "tombstones": {},
-  "syncedAt": 1783709090149
+  "syncedAt": 1783714100443
 }
