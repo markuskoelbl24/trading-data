@@ -530,7 +530,7 @@
       "branche": "",
       "titel": "Vulcan Energy Resources",
       "symbol": "VUL.AX",
-      "kursAktuell": "",
+      "kursAktuell": "1,745",
       "notiz": "aus TR-CSV importiert",
       "_u": 1783726455702,
       "tx": [
@@ -940,14 +940,16 @@
           "_u": 1783726455702
         }
       ],
-      "div": []
+      "div": [],
+      "fxFrom": "AUD",
+      "kursTime": 1783664263000
     },
     {
       "id": "trc_xiaomi",
       "branche": "",
       "titel": "Xiaomi",
       "symbol": "1810.HK",
-      "kursAktuell": "",
+      "kursAktuell": "2,8835",
       "notiz": "aus TR-CSV importiert",
       "_u": 1783726455702,
       "tx": [
@@ -1015,7 +1017,9 @@
           "_u": 1783726455702
         }
       ],
-      "div": []
+      "div": [],
+      "fxFrom": "HKD",
+      "kursTime": 1783670914000
     },
     {
       "id": "trc_byd",
@@ -1172,7 +1176,7 @@
       "branche": "",
       "titel": "Electro Optic System Holdings",
       "symbol": "EOS.AX",
-      "kursAktuell": "",
+      "kursAktuell": "5,1134",
       "notiz": "aus TR-CSV importiert",
       "_u": 1783726455702,
       "tx": [
@@ -1231,14 +1235,16 @@
           "_u": 1783726455702
         }
       ],
-      "div": []
+      "div": [],
+      "fxFrom": "AUD",
+      "kursTime": 1783663832000
     },
     {
       "id": "trc_deutsche_telekom",
       "branche": "",
       "titel": "Deutsche Telekom",
       "symbol": "DTE.DE",
-      "kursAktuell": "",
+      "kursAktuell": "26,12",
       "notiz": "aus TR-CSV importiert",
       "_u": 1783726455702,
       "tx": [
@@ -1405,14 +1411,16 @@
           "_u": 1783726455702
         }
       ],
-      "div": []
+      "div": [],
+      "fxFrom": "",
+      "kursTime": 1783697864000
     },
     {
       "id": "trc_orsted",
       "branche": "",
       "titel": "Orsted",
       "symbol": "ORSTED.CO",
-      "kursAktuell": "",
+      "kursAktuell": "19,65",
       "notiz": "aus TR-CSV importiert",
       "_u": 1783726455702,
       "tx": [
@@ -1480,14 +1488,16 @@
           "_u": 1783726455702
         }
       ],
-      "div": []
+      "div": [],
+      "fxFrom": "DKK",
+      "kursTime": 1783695583000
     },
     {
       "id": "trc_net_digital",
       "branche": "",
       "titel": "Net Digital",
       "symbol": "VRL.DE",
-      "kursAktuell": "",
+      "kursAktuell": "13,9",
       "notiz": "aus TR-CSV importiert",
       "_u": 1783726455702,
       "tx": [
@@ -1591,14 +1601,16 @@
           "_u": 1783726455702
         }
       ],
-      "div": []
+      "div": [],
+      "fxFrom": "",
+      "kursTime": 1783697740000
     },
     {
       "id": "trc_ubtech_robotics",
       "branche": "",
       "titel": "Ubtech Robotics",
       "symbol": "9880.HK",
-      "kursAktuell": "",
+      "kursAktuell": "9,4907",
       "notiz": "aus TR-CSV importiert",
       "_u": 1783726455702,
       "tx": [
@@ -1702,14 +1714,16 @@
           "_u": 1783726455702
         }
       ],
-      "div": []
+      "div": [],
+      "fxFrom": "HKD",
+      "kursTime": 1783670915000
     },
     {
       "id": "trc_steico",
       "branche": "",
       "titel": "STEICO",
       "symbol": "ST5.DE",
-      "kursAktuell": "",
+      "kursAktuell": "19,1",
       "notiz": "aus TR-CSV importiert",
       "_u": 1783726455702,
       "tx": [
@@ -1831,14 +1845,16 @@
           "_u": 1783726455702
         }
       ],
-      "div": []
+      "div": [],
+      "fxFrom": "",
+      "kursTime": 1783697716000
     },
     {
       "id": "trc_freeport_mcmoran",
       "branche": "",
       "titel": "Freeport McMoRan",
       "symbol": "FCX",
-      "kursAktuell": "",
+      "kursAktuell": "53,82",
       "notiz": "aus TR-CSV importiert",
       "_u": 1783726455702,
       "tx": [
@@ -1861,7 +1877,9 @@
           "_u": 1783726455702
         }
       ],
-      "div": []
+      "div": [],
+      "fxFrom": "USD",
+      "kursTime": 1783713803000
     },
     {
       "id": "trc_carl_zeiss_meditec",
@@ -4683,5 +4701,5 @@
     "imp10": 1783716239137,
     "imp13": 1783716323861
   },
-  "syncedAt": 1783756124800
+  "syncedAt": 1783757286413
 }
