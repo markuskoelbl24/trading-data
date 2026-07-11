@@ -95,6 +95,40 @@
   .green{color:var(--green)} .red{color:var(--red)} .amber{color:var(--amber)}
   .grp-title{font-size:12.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;
     margin:20px 3px 2px;font-weight:700}
+  /* --- Redesign Karten-Kopf --- */
+  .pos-head{cursor:pointer}
+  .ph-left{flex:1;min-width:0}
+  .titel .chev{color:var(--muted);font-size:12px;font-weight:400;margin-left:5px}
+  .ph-sub{color:var(--muted);font-size:13px;margin-top:4px;display:flex;flex-wrap:wrap;gap:3px 9px;align-items:center}
+  .ph-sub b{color:var(--txt);font-weight:700}
+  .ph-sub .gv{cursor:pointer}
+  .ph-sub .gv.green{color:var(--green)} .ph-sub .gv.red{color:var(--red)}
+  .ph-right{text-align:right;white-space:nowrap}
+  .ph-kurs{font-size:17px;font-weight:700}
+  .ph-day{font-size:13px;font-weight:700;margin-top:2px;cursor:pointer;display:inline-block}
+  .ph-day.up{color:var(--green)} .ph-day.down{color:var(--red)} .ph-day.flat{color:var(--muted);cursor:default}
+  .ph-edit{align-self:flex-start}
+  .pos-body{margin-top:12px}
+  /* Sortier-Leiste */
+  .sortsel{display:flex;align-items:center;gap:9px;margin:16px 3px 4px}
+  .sortsel .sl{color:var(--muted);font-size:12px}
+  .sortseg{display:inline-flex;background:var(--card2);border:1px solid var(--line);border-radius:9px;overflow:hidden}
+  .sortseg button{background:transparent;color:var(--muted);font-size:12.5px;font-weight:600;padding:6px 13px;border-radius:0}
+  .sortseg button.on{background:var(--accent);color:#fff}
+  /* Break-even-Leiste (Labels an Markern, zentriert) */
+  .esb{position:relative;height:66px;margin:4px 2px 2px}
+  .esb-trk{position:absolute;left:0;right:0;top:38px;height:4px;border-radius:3px;background:var(--line);transform:translateY(-50%)}
+  .esb-fill{position:absolute;top:38px;height:4px;border-radius:3px;transform:translateY(-50%)}
+  .esb-fill.up{background:var(--green)} .esb-fill.down{background:var(--red)}
+  .esb-mk{position:absolute;top:38px;transform:translate(-50%,-50%)}
+  .esb-mk .d{width:11px;height:11px;border-radius:50%}
+  .esb-mk.e .d{background:transparent;border:2px solid var(--muted)}
+  .esb-mk.j .d{width:14px;height:14px;background:var(--txt);border:3px solid var(--card)}
+  .esb-mk.b .l{width:3px;height:15px;border-radius:2px;background:var(--accent)}
+  .esb-lab{position:absolute;font-size:11.5px;white-space:nowrap}
+  .esb-lab .n{color:var(--muted)} .esb-lab .v{font-weight:700}
+  .esb-lab.top{top:5px} .esb-lab.bot{top:50px}
+  .esb-lab.be .v{color:var(--accent)}
   /* Portfolio-Summe */
   .total{background:linear-gradient(180deg,var(--card2),var(--card));border:1px solid var(--line);
     border-radius:var(--radius);padding:13px 14px;margin-bottom:6px}
@@ -134,7 +168,7 @@
 
 <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 14px">
   <h1 style="margin:0">Trading-Data <span style="font-size:12px;color:var(--muted);font-weight:400">FIFO</span></h1>
-  <button class="btn ghost" style="flex:none;padding:8px 13px;font-size:14px;color:#c3ccd6" onclick="openBackup()"><span style="font-size:20px;vertical-align:-3px">⚙︎</span> Setup</button>
+  <button class="btn ghost" style="flex:none;display:inline-flex;align-items:center;gap:5px;padding:8px 13px;font-size:14px;color:#c3ccd6" onclick="openBackup()"><span style="font-size:19px;line-height:1">⚙︎</span>Setup</button>
 </div>
 
 <div id="total" class="total"></div>
@@ -171,6 +205,10 @@ function load(){
   if(!s.positions)s.positions=[];
   if(!s.settings)s.settings={};
   if(s.settings.autoRefresh===undefined)s.settings.autoRefresh=true;   // Kurse beim Start auto-laden
+  if(!s.settings.sortBy)s.settings.sortBy="size";
+  if(!s.settings.dayMode)s.settings.dayMode="pct";
+  if(!s.settings.gesMode)s.settings.gesMode="eur";
+  if(!s.settings.collapsed)s.settings.collapsed={};
   if(!s.settings.gh)s.settings.gh={token:"",repo:"",path:"trading.json",branch:"main"}; // Sync-Config (lokal, NICHT gesynct)
   if(s.settings.autoSync===undefined)s.settings.autoSync=true;  // nach Änderungen automatisch hochladen
   if(!s.tombstones)s.tombstones={};   // id -> Löschzeitpunkt (ms), gegen Lösch-Zombies beim Merge
@@ -286,7 +324,7 @@ function render(){
       ${syncReady()?`<button class="btn ghost" style="padding:5px 10px" onclick="fullSync(true)">⇅ Sync</button>`:""}
       ${hasSym?`<button id="refreshBtn" class="btn ghost" style="padding:5px 10px" onclick="refreshPrices()">⟳ Kurse</button>`:""}
       <span class="badge">${state.positions.length} Positionen</span></div>
-    ${hasSym&&upd?`<div class="hint" style="margin-top:2px">Zuletzt abgerufen: ${new Date(upd).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})} Uhr${state.settings.autoRefresh?" · Auto an":""} · Kurs-Zeit steht je Wert</div>`:""}
+    ${hasSym&&upd?`<div class="hint" style="margin-top:2px">Zuletzt abgerufen: ${new Date(upd).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})} Uhr</div>`:""}
     <div class="kpis">
       <div class="kpi"><div class="k">Realisiert (FIFO)</div><div class="v ${cls(tReal)}">${signEur(tReal)}</div></div>
       <div class="kpi"><div class="k">Unrealisiert</div><div class="v ${cls(tUnreal)}">${signEur(tUnreal)}</div></div>
@@ -300,13 +338,22 @@ function render(){
     (metrics[idx].openQty<=1e-9 && metrics[idx].tx.length>0 ? closedIdx : openIdx).push(idx);
   });
   list.innerHTML="";
-  // Offene nach Branche gruppiert
-  const groups={};
-  openIdx.forEach(idx=>{const g=state.positions[idx].branche||"—";(groups[g]=groups[g]||[]).push(idx);});
-  Object.keys(groups).sort((a,b)=>a.localeCompare(b,"de")).forEach(g=>{
-    const gt=document.createElement("div");gt.className="grp-title";gt.textContent=g;list.appendChild(gt);
-    groups[g].forEach(idx=>list.appendChild(renderPos(state.positions[idx],metrics[idx],idx)));
-  });
+  // Sortier-Leiste (flache Liste; Branche bleibt in den Daten für spätere Verteilungs-Ansicht)
+  const sb=state.settings.sortBy||"size";
+  if(openIdx.length){
+    const bar=document.createElement("div"); bar.className="sortsel";
+    bar.innerHTML=`<span class="sl">Sortieren</span><div class="sortseg">
+      <button class="${sb==="size"?"on":""}" onclick="setSort('size')">Größe</button>
+      <button class="${sb==="gv"?"on":""}" onclick="setSort('gv')">G/V</button>
+      <button class="${sb==="name"?"on":""}" onclick="setSort('name')">Name</button></div>`;
+    list.appendChild(bar);
+  }
+  const keyOf=idx=>{const m=metrics[idx],p=state.positions[idx];
+    if(sb==="name")return (p.titel||"").toLowerCase();
+    if(sb==="gv")return -m.gesamt;
+    return -(m.hasKurs?m.curVal:m.openCost);};   // Größe (Default): größte Position oben
+  [...openIdx].sort((a,b)=>{const ka=keyOf(a),kb=keyOf(b);return ka<kb?-1:ka>kb?1:0;})
+    .forEach(idx=>list.appendChild(renderPos(state.positions[idx],metrics[idx],idx)));
   // Geschlossene in einklappbaren Bereich unten
   if(closedIdx.length){
     const sec=document.createElement("details");
@@ -337,37 +384,55 @@ function esBar(m){
   const vals=[E,B]; if(!isNaN(N))vals.push(N);
   let lo=Math.min(...vals), hi=Math.max(...vals);
   if(hi===lo){const b=lo||1; lo=b*0.98; hi=b*1.02;}
-  const pad=(hi-lo)*0.15; lo-=pad; hi+=pad;
-  const pos=v=>Math.max(0,Math.min(100,(v-lo)/(hi-lo)*100));
+  const pad=(hi-lo)*0.12; lo-=pad; hi+=pad;
+  const P=v=>Math.max(2,Math.min(98,(v-lo)/(hi-lo)*100));
   const up=!isNaN(N)&&N>=B;
+  const pE=P(E),pB=P(B),pN=isNaN(N)?null:P(N);
   let fill="";
-  if(!isNaN(N)){const a=Math.min(pos(B),pos(N)),b=Math.max(pos(B),pos(N));
-    fill=`<div class="es-fill ${up?"up":"down"}" style="left:${a}%;width:${b-a}%"></div>`;}
-  const deltaChip=!isNaN(m.beDelta)?`<span class="be-delta ${m.beDelta<=0?"green":"red"}">${m.beDelta<=0?"▼":"▲"} ${eur.format(Math.abs(m.beDelta))} (${pct.format(Math.abs(m.bePct))} %)</span>`:"";
-  return `<div class="einstand">
-    <div class="es-vals">
-      <span><span class="g ring"></span> <span class="lbl">Einstieg</span> <b>${feur(E)}</b></span>
-      <span><span class="g bar"></span> <span class="lbl">Break-even</span> <b class="${B<=E?"green":"red"}">${feur(B)}</b></span>
-      ${!isNaN(N)?`<span><span class="g dot ${up?"up":"down"}"></span> <span class="lbl">jetzt</span> <b>${feur(N)}</b></span>`:""}
-      ${deltaChip}
-    </div>
-    <div class="es-bar">
-      <div class="es-track"></div>
-      ${fill}
-      <div class="es-mark ring" style="left:${pos(E)}%"></div>
-      <div class="es-mark bar" style="left:${pos(B)}%"></div>
-      ${!isNaN(N)?`<div class="es-mark dot ${up?"up":"down"}" style="left:${pos(N)}%"></div>`:""}
-    </div>
+  if(pN!=null){const a=Math.min(pB,pN),b=Math.max(pB,pN);
+    fill=`<div class="esb-fill ${up?"up":"down"}" style="left:${a}%;width:${b-a}%"></div>`;}
+  const lab=(cls,p,n,v,anch)=>`<div class="esb-lab ${cls}" style="left:${p}%;${anch}"><span class="n">${n}</span> <span class="v">${feur(v)}</span></div>`;
+  // Einstieg + jetzt oben, links/rechts verankert (max. Abstand → keine Kollision); Break-even unten
+  let topLabs;
+  if(pN==null){ topLabs=lab("top",pE,"Einstieg",E,"transform:translateX(-50%)"); }
+  else if(pE<=pN){ topLabs=lab("top",pE,"Einstieg",E,"transform:translateX(0)")+lab("top",pN,"jetzt",N,"transform:translateX(-100%)"); }
+  else { topLabs=lab("top",pN,"jetzt",N,"transform:translateX(0)")+lab("top",pE,"Einstieg",E,"transform:translateX(-100%)"); }
+  const bA = pB>66?"transform:translateX(-100%)": pB<34?"transform:translateX(0)":"transform:translateX(-50%)";
+  const beLab=lab("bot be",pB,"Break-even",B,bA);
+  return `<div class="esb">
+    <div class="esb-trk"></div>${fill}
+    <div class="esb-mk e" style="left:${pE}%"><div class="d"></div></div>
+    ${pN!=null?`<div class="esb-mk j" style="left:${pN}%"><div class="d"></div></div>`:""}
+    <div class="esb-mk b" style="left:${pB}%"><div class="l"></div></div>
+    ${topLabs}${beLab}
   </div>`;
 }
+// Tagestrend (global %/€) und Gesamt (global €/%) – beide antippbar
+function dayHtml(p,m){
+  if(!(m.openQty>0)||!m.hasKurs||!(p.prevClose>0)) return "";
+  const abs=m.openQty*(m.kurs-p.prevClose), pc=(m.kurs-p.prevClose)/p.prevClose*100;
+  const up=pc>=0, ar=up?"▲":"▼";
+  const txt=ar+" "+(state.settings.dayMode==="eur"? eur.format(Math.abs(abs)) : pct.format(Math.abs(pc))+" %");
+  return `<div class="ph-day ${up?"up":"down"}" onclick="toggleDayMode(event)">${txt}</div>`;
+}
+function gesHtml(m){
+  const txt=state.settings.gesMode==="pct"? fpct(m.gesamtPct) : signEur(m.gesamt);
+  return `<b class="gv ${cls(m.gesamt)}" onclick="toggleGesMode(event)">${txt}</b>`;
+}
+function toggleDayMode(e){if(e)e.stopPropagation();state.settings.dayMode=state.settings.dayMode==="eur"?"pct":"eur";save();render();}
+function toggleGesMode(e){if(e)e.stopPropagation();state.settings.gesMode=state.settings.gesMode==="pct"?"eur":"pct";save();render();}
+function toggleCollapse(id){const c=state.settings.collapsed||(state.settings.collapsed={});c[id]=!c[id];save();render();}
+function setSort(s){state.settings.sortBy=s;save();render();}
 
 function renderPos(p,m,idx){
   const el=document.createElement("div");
   const stopVal=num(p.stop);
   const belowStop=m.hasKurs && stopVal>0 && m.kurs<stopVal;   // Kurs unter Stop
   el.className="pos"+(m.oversell?" warn":"")+(belowStop?" stop":"");
+  const fxNote = p.fxFrom?` · <span class="lbl">≈ aus ${esc(p.fxFrom)}</span>`:"";
+  const tsNote = (p.kursTime&&(Date.now()-p.kursTime>18e5))?` · <span class="lbl">${esc(kursTimeLbl(p.kursTime))}</span>`:"";
   const openLine = m.openQty>0
-    ? `<span><b>${numf.format(m.openQty)}</b> St. offen · Ø ${feur(m.avg)}</span>`
+    ? `<span><b>${numf.format(m.openQty)}</b> St. offen · Ø ${feur(m.avg)}${fxNote}${tsNote}</span>`
     : `<span>Position geschlossen</span>`;
   // Transaktionsliste
   let txHtml="";
@@ -398,45 +463,42 @@ function renderPos(p,m,idx){
         <button class="txedit" onclick="openTx('${p.id}','${e.id}')">✎</button></div>`;
     }
   }
+  const collapsed=(state.settings.collapsed||{})[p.id];
+  const stopBadge = p.stop?` <span class="badge${belowStop?" badge-red":""}">Stop ${feur(num(p.stop))}</span>`:"";
+  const subLeft = m.openQty>0 ? `Position <b>${feur(m.curVal)}</b> · Gesamt ${gesHtml(m)}` : `Geschlossen · Gesamt ${gesHtml(m)}`;
+  const right = m.openQty>0 ? `<div class="ph-right"><div class="ph-kurs">${m.hasKurs?feur(m.kurs):"—"}</div>${dayHtml(p,m)}</div>` : "";
   el.innerHTML=`
-    <div class="pos-head">
-      <div style="flex:1">
-        <div class="titel">${esc(p.titel||"(ohne Titel)")}</div>
-        <div class="row" style="margin-top:4px;gap:6px">
-          ${p.branche?`<span class="badge">${esc(p.branche)}</span>`:""}
-          ${p.stop?`<span class="badge${belowStop?" badge-red":""}">Stop ${feur(num(p.stop))}</span>`:""}
-          ${m.first?`<span class="badge">${fdate(m.first)}${m.closed&&m.last!==m.first?"–"+fdate(m.last):m.closed?"":" …"}</span>`:""}
-        </div>
+    <div class="pos-head" onclick="toggleCollapse('${p.id}')">
+      <div class="ph-left">
+        <div class="titel">${esc(p.titel||"(ohne Titel)")}<span class="chev">${collapsed?"▸":"▾"}</span></div>
+        <div class="ph-sub">${subLeft}${stopBadge}</div>
       </div>
-      <button class="txedit" style="margin-top:2px" onclick="openPos('${p.id}')">✎</button>
+      ${right}
+      <button class="txedit ph-edit" onclick="event.stopPropagation();openPos('${p.id}')">✎</button>
     </div>
-    ${kpiBlock(m)}
-    ${m.openQty>0&&!isNaN(m.erstEinstieg)?esBar(m):""}
-    <div class="meta">
-      ${openLine}
-      ${m.openQty>0?`<span>Kurs jetzt: <b>${m.hasKurs?feur(m.kurs):"—"}</b>${p.fxFrom?` <span class="lbl">(≈ aus ${esc(p.fxFrom)})</span>`:""}${p.kursTime?` <span class="lbl">· ${esc(kursTimeLbl(p.kursTime))}</span>`:""} → Wert ${feur(m.curVal)}</span>`:""}
-      ${m.divs?`<button class="divchip ${p.divOff?"off":""}" onclick="toggleDivOff('${p.id}')" title="Dividende in Gesamt mitzählen">
-        <span class="cbox">${p.divOff?"":"✓"}</span> Div ${feur(m.divs)} in Gesamt</button>`:""}
+    <div class="pos-body"${collapsed?' style="display:none"':''}>
+      ${m.openQty>0&&!isNaN(m.erstEinstieg)?esBar(m):""}
+      ${kpiBlock(m)}
+      <div class="meta">
+        ${openLine}
+        ${m.divs?`<button class="divchip ${p.divOff?"off":""}" onclick="toggleDivOff('${p.id}')" title="Dividende in Gesamt mitzählen"><span class="cbox">${p.divOff?"":"✓"}</span> Div ${feur(m.divs)} in Gesamt</button>`:""}
+      </div>
+      ${m.openQty>0?`<div class="kurs-inline"><label style="margin:0">Kurs jetzt</label><input inputmode="decimal" value="${p.kursAktuell??""}" placeholder="z.B. 152,02" onchange="setKurs('${p.id}',this.value)"></div>`:""}
+      ${belowStop?`<div class="stopmsg">⚠︎ Kurs ${feur(m.kurs)} unter Stop ${feur(stopVal)}</div>`:""}
+      ${m.oversell?`<div class="warnmsg">⚠︎ Es wurde mehr verkauft als (bisher) gekauft — prüfe die Stückzahlen.</div>`:""}
+      <div class="pos-actions">
+        <button class="btn sm" onclick="openTx('${p.id}')">+ Kauf/Verkauf</button>
+        <button class="btn sec sm" onclick="openDiv('${p.id}')">+ Dividende</button>
+      </div>
+      <details data-pid="${p.id}" ${openDetails.has(p.id)?"open":""}><summary>Buchungen (${allEntries.length})</summary>${txHtml}</details>
     </div>
-    ${m.openQty>0?`<div class="kurs-inline">
-      <label style="margin:0">Kurs jetzt</label>
-      <input inputmode="decimal" value="${p.kursAktuell??""}" placeholder="z.B. 152,02"
-        onchange="setKurs('${p.id}',this.value)">
-    </div>`:""}
-    ${belowStop?`<div class="stopmsg">⚠︎ Kurs ${feur(m.kurs)} unter Stop ${feur(stopVal)}</div>`:""}
-    ${m.oversell?`<div class="warnmsg">⚠︎ Es wurde mehr verkauft als (bisher) gekauft — prüfe die Stückzahlen.</div>`:""}
-    <div class="pos-actions">
-      <button class="btn sm" onclick="openTx('${p.id}')">+ Kauf/Verkauf</button>
-      <button class="btn sec sm" onclick="openDiv('${p.id}')">+ Dividende</button>
-    </div>
-    <details data-pid="${p.id}" ${openDetails.has(p.id)?"open":""}><summary>Buchungen (${allEntries.length})</summary>${txHtml}</details>
   `;
   return el;
 }
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
 
 /* ---------- Kurs schnell setzen ---------- */
-function setKurs(pid,val){const p=find(pid);if(!p)return;p.kursAktuell=val;p.fxFrom="";p.kursTime="";touch(p);save();render();syncPushLater();}
+function setKurs(pid,val){const p=find(pid);if(!p)return;p.kursAktuell=val;p.fxFrom="";p.kursTime="";p.prevClose=null;touch(p);save();render();syncPushLater();}
 function toggleDivOff(pid){const p=find(pid);if(!p)return;p.divOff=!p.divOff;touch(p);save();render();syncPushLater();}
 function find(pid){return state.positions.find(p=>p.id===pid);}
 
@@ -489,7 +551,8 @@ async function yahooQuote(sym){
   const b=await proxyJSON(u);
   const m=b&&b.chart&&b.chart.result&&b.chart.result[0]&&b.chart.result[0].meta;
   if(!m || m.regularMarketPrice==null) throw new Error("kein Kurs (Ticker prüfen)");
-  return {price:+m.regularMarketPrice, cur:m.currency||"EUR", time:(m.regularMarketTime?m.regularMarketTime*1000:0)};
+  return {price:+m.regularMarketPrice, cur:m.currency||"EUR", time:(m.regularMarketTime?m.regularMarketTime*1000:0),
+    prev:(m.chartPreviousClose!=null?m.chartPreviousClose:(m.previousClose!=null?m.previousClose:null))};
 }
 // Zeigt, VON WANN der Kurs ist (Börsen-Zeitstempel) — heute = evtl. live (~15 Min verzögert), sonst Schlusskurs.
 function kursTimeLbl(ms){
@@ -531,12 +594,12 @@ async function refreshPrices(auto){
       const s=(p.symbol||"").trim();
       if(!s || compute(p).openQty<=0)continue;
       const q=quotes[s]; if(!q)continue;
-      let eur=q.price, from="";
+      let eur=q.price, pv=(q.prev!=null?q.prev:null), from="";
       if(q.cur && q.cur!=="EUR"){
         if(fx[q.cur]===undefined){ const msg=s+" — €-Umrechnung ("+q.cur+") nicht verfügbar"; if(!fail.includes(msg))fail.push(msg); continue; }
-        eur=q.price*fx[q.cur]; from=q.cur;
+        eur=q.price*fx[q.cur]; if(pv!=null)pv*=fx[q.cur]; from=q.cur;
       }
-      p.kursAktuell=(+(eur.toFixed(eur<10?4:2))+"").replace(".",","); p.fxFrom=from; p.kursTime=q.time||Date.now();
+      p.kursAktuell=(+(eur.toFixed(eur<10?4:2))+"").replace(".",","); p.fxFrom=from; p.kursTime=q.time||Date.now(); p.prevClose=(pv!=null?+pv.toFixed(4):null);
       ok++;
     }
     state.settings.pricesUpdated=Date.now();
@@ -863,7 +926,7 @@ function openBackup(){
       <button class="btn sec" style="flex:1" onclick="closeSheet()">Schließen</button>
     </div>`);
 }
-function toggleAuto(){state.settings.autoRefresh=!state.settings.autoRefresh;save();openBackup();render();}
+function toggleAuto(){state.settings.autoRefresh=!state.settings.autoRefresh;save();startPriceTimer();openBackup();render();}
 function toggleAutoSync(){state.settings.autoSync=!state.settings.autoSync;save();openBackup();}
 function saveGh(){
   state.settings.gh={token:val("f_ghtoken").trim(),repo:val("f_ghrepo").trim(),
@@ -919,6 +982,12 @@ function toast(msg){const t=document.getElementById("toast");if(!t)return;
 render();
 // Kurse beim Start automatisch laden (leise, nicht blockierend)
 if(state.settings.autoRefresh!==false) refreshPrices(true);
+// Auto-Refresh alle 5 Min, solange die App sichtbar ist (tagsüber immer frische Kurse; „Stand"-Zeit erscheint nur, wenn Kurs >30 Min alt = WE/außerhalb Handelszeit)
+let priceTimer=null;
+function startPriceTimer(){ clearInterval(priceTimer); if(state.settings.autoRefresh===false) return;
+  priceTimer=setInterval(()=>{ if(document.visibilityState==="visible") refreshPrices(true); }, 300000); }
+document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible" && state.settings.autoRefresh!==false) refreshPrices(true); });
+startPriceTimer();
 // Beim Start mit GitHub abgleichen (holen → mergen → zurückschreiben)
 if(syncReady()) fullSync(false);
 </script>
