@@ -285,7 +285,7 @@ function render(){
       ${syncReady()?`<button class="btn ghost" style="padding:5px 10px" onclick="fullSync(true)">⇅ Sync</button>`:""}
       ${hasSym?`<button id="refreshBtn" class="btn ghost" style="padding:5px 10px" onclick="refreshPrices()">⟳ Kurse</button>`:""}
       <span class="badge">${state.positions.length} Positionen</span></div>
-    ${hasSym&&upd?`<div class="hint" style="margin-top:2px">Kurse-Stand: ${new Date(upd).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})} Uhr · ca. ${usageToday()}/${DAILY_CAP} heute${state.settings.autoRefresh?" · Auto an":""}</div>`:""}
+    ${hasSym&&upd?`<div class="hint" style="margin-top:2px">Kurse-Stand: ${new Date(upd).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})} Uhr${state.settings.autoRefresh?" · Auto an":""}</div>`:""}
     <div class="kpis">
       <div class="kpi"><div class="k">Realisiert (FIFO)</div><div class="v ${cls(tReal)}">${signEur(tReal)}</div></div>
       <div class="kpi"><div class="k">Unrealisiert</div><div class="v ${cls(tUnreal)}">${signEur(tUnreal)}</div></div>
@@ -465,38 +465,46 @@ async function fxToEur(cur){
     if(j&&j.rates&&j.rates.EUR>0) return j.rates.EUR; }catch(e){}
   return null;
 }
+// ---- Live-Kurse: Yahoo Finance über CORS-Proxy (kein Key; deckt US + Xetra/EU) ----
+// Yahoo blockt direkte Browser-Aufrufe (CORS) → über gratis Proxy. corsproxy primär, allorigins als Fallback.
+const PROXIES=[
+  {mk:u=>"https://corsproxy.io/?url="+encodeURIComponent(u), wrap:false},
+  {mk:u=>"https://api.allorigins.win/get?url="+encodeURIComponent(u), wrap:true}
+];
+async function proxyJSON(url){
+  let last="";
+  for(const p of PROXIES){
+    try{
+      const r=await fetch(p.mk(url),{cache:"no-store"});
+      if(!r.ok){ last="HTTP "+r.status; continue; }
+      if(p.wrap){ const w=await r.json(); return JSON.parse(w.contents); }
+      return await r.json();
+    }catch(e){ last=e.name||"Fehler"; }
+  }
+  throw new Error(last||"Proxy nicht erreichbar");
+}
+async function yahooQuote(sym){
+  const u="https://query1.finance.yahoo.com/v8/finance/chart/"+encodeURIComponent(sym)+"?range=1d&interval=1d";
+  const b=await proxyJSON(u);
+  const m=b&&b.chart&&b.chart.result&&b.chart.result[0]&&b.chart.result[0].meta;
+  if(!m || m.regularMarketPrice==null) throw new Error("kein Kurs (Ticker prüfen)");
+  return {price:+m.regularMarketPrice, cur:m.currency||"EUR"};
+}
 async function refreshPrices(auto){
   if(priceBusy)return;
-  const key=(state.settings.apiKey||"").trim();
   const syms=openSymbols();
-  if(!key){ if(!auto)alert("Bitte zuerst einen (kostenlosen) Twelve-Data API-Key hinterlegen:\nBackup → API-Key."); return; }
-  if(!syms.length){ if(!auto)alert("Keine offene Position mit Symbol. Trage bei einer Position ein Symbol ein (🔍 im Positions-Editor)."); return; }
-  if(auto){
-    // Kurz-Sperre gegen schnelles Neuladen
-    if(state.settings.pricesUpdated && Date.now()-state.settings.pricesUpdated < AUTO_THROTTLE_MS)return;
-    // Tagesreserve: Auto stoppt, wenn nur noch RESERVE Credits frei wären (manuell geht weiter)
-    if(usageToday()+syms.length > DAILY_CAP-RESERVE)return;
-  }
+  if(!syms.length){ if(!auto)alert("Keine offene Position mit Symbol. Trage bei einer Position einen Yahoo-Ticker ein (🔍 im Positions-Editor)."); return; }
+  if(auto && state.settings.pricesUpdated && Date.now()-state.settings.pricesUpdated < AUTO_THROTTLE_MS)return; // Kurz-Sperre gegen schnelles Neuladen
   priceBusy=true;
   const btn=document.getElementById("refreshBtn"); if(btn)btn.textContent="⟳ lädt…";
   try{
-    // Pro Symbol EINZELN abfragen (/quote liefert Kurs UND Währung) → ein ungültiges Symbol blockiert die anderen nicht.
-    // Format "SYM:MIC" (z.B. SAP:XNYS) → symbol=SAP&mic_code=XNYS für den richtigen Börsenplatz.
+    // Pro Symbol EINZELN → ein kaputter Ticker blockiert die anderen nicht.
     const quotes={}; const fail=[];
-    for(const raw of syms){
-      const i=raw.indexOf(":");
-      const sym=i>0?raw.slice(0,i):raw, mic=i>0?raw.slice(i+1):"";
-      const url="https://api.twelvedata.com/quote?symbol="+encodeURIComponent(sym)+
-        (mic?"&mic_code="+encodeURIComponent(mic):"")+"&apikey="+encodeURIComponent(key);
-      try{
-        const d=await (await fetch(url)).json();
-        const px=d&&(d.close!==undefined?d.close:d.price);
-        if(d && !d.code && px!==undefined && px!==null && px!=="")
-          quotes[raw]={price:+px, cur:(d.currency||"EUR")};
-        else fail.push(raw+" — "+((d&&(d.message||d.code))||"keine Kursdaten"));
-      }catch(e){ fail.push(raw+" — Netzwerkfehler"); }
+    for(const sym of syms){
+      try{ quotes[sym]=await yahooQuote(sym); }
+      catch(e){ fail.push(sym+" — "+(e.message||"kein Kurs")); }
     }
-    // Fremdwährungen → EUR-Wechselkurse holen (je Währung einmal, kostenlos ohne Key)
+    // Fremdwährungen → EUR (je Währung einmal, kostenlos ohne Key)
     const curs=[...new Set(Object.values(quotes).map(q=>q.cur).filter(c=>c&&c!=="EUR"))];
     const fx={};
     for(const c of curs){ const r=await fxToEur(c); if(r) fx[c]=r; }
@@ -507,43 +515,42 @@ async function refreshPrices(auto){
       const q=quotes[s]; if(!q)continue;
       let eur=q.price, from="";
       if(q.cur && q.cur!=="EUR"){
-        if(fx[q.cur]===undefined){ if(!fail.includes(s+" — €-Umrechnung ("+q.cur+") nicht verfügbar"))fail.push(s+" — €-Umrechnung ("+q.cur+") nicht verfügbar"); continue; }
+        if(fx[q.cur]===undefined){ const msg=s+" — €-Umrechnung ("+q.cur+") nicht verfügbar"; if(!fail.includes(msg))fail.push(msg); continue; }
         eur=q.price*fx[q.cur]; from=q.cur;
       }
       p.kursAktuell=(+(eur.toFixed(eur<10?4:2))+"").replace(".",","); p.fxFrom=from;
       ok++;
     }
-    addUsage(syms.length);                 // Credits (ca.) mitzählen
     state.settings.pricesUpdated=Date.now();
     save(); render();
     if(auto){ if(ok)toast("✓ Kurse aktualisiert"); }
     else if(fail.length)alert(ok+" Kurs(e) aktualisiert.\n\nKein Kurs für:\n• "+fail.join("\n• ")+
-      "\n\nTipp: \"symbol not found\"/Xetra-Meldung → Gratis-Tarif deckt diesen Börsenplatz evtl. nicht. Dann im Positions-Editor die US-Notierung testen (z.B. nur SAP, in USD) oder den Kurs manuell setzen.");
-    else if(!auto)toast("✓ "+ok+" Kurse aktualisiert");
+      "\n\nTipp: Ticker im Yahoo-Format prüfen (🔍 im Editor): z.B. SAP.DE (Xetra), BY6.F (Frankfurt), AAPL (US). Nicht börsengelistete Werte (z.B. SpaceX) manuell pflegen.");
+    else toast("✓ "+ok+" Kurse aktualisiert");
   }catch(e){
-    if(!auto)alert("Abruf fehlgeschlagen (offline oder Quelle nicht erreichbar).");
+    if(!auto)alert("Abruf fehlgeschlagen (offline oder Proxy/Yahoo nicht erreichbar).");
   }finally{
     priceBusy=false;
     const b=document.getElementById("refreshBtn"); if(b)b.textContent="⟳ Kurse";
   }
 }
 
-/* ---------- Symbol-Suche (Twelve Data reference data, kein Key nötig) ---------- */
+/* ---------- Symbol-Suche (Yahoo Finance über Proxy, kein Key) ---------- */
 async function symSearch(){
-  const q=val("f_symbol").trim().split(":")[0];
+  const q=val("f_symbol").trim();
   const box=document.getElementById("symResults");
   if(!box)return;
-  if(!q){box.innerHTML='<div class="hint">Erst Name oder Kürzel oben eintippen (z.B. SAP), dann 🔍.</div>';return;}
+  if(!q){box.innerHTML='<div class="hint">Erst Name oder Kürzel oben eintippen (z.B. SAP oder Steico), dann 🔍.</div>';return;}
   box.innerHTML='<div class="hint">Suche…</div>';
   try{
-    const r=await fetch("https://api.twelvedata.com/symbol_search?symbol="+encodeURIComponent(q)+"&outputsize=15");
-    const data=(await r.json()).data||[];
+    const b=await proxyJSON("https://query1.finance.yahoo.com/v1/finance/search?q="+encodeURIComponent(q)+"&quotesCount=12&newsCount=0");
+    const data=(b.quotes||[]).filter(x=>x.symbol && (x.quoteType==="EQUITY"||x.quoteType==="ETF"));
     if(!data.length){box.innerHTML='<div class="hint">Nichts gefunden. Anderes Kürzel probieren.</div>';return;}
     box.innerHTML=data.map(x=>{
-      const store=x.symbol+(x.mic_code?":"+x.mic_code:"");
-      const cur=x.currency||"";
-      const eurStar=cur==="EUR"?" ★":"";
-      const label=`<b>${esc(x.symbol)}</b> · ${esc(x.exchange||x.mic_code||"")} · ${esc(cur)}${eurStar}<br><span class="lbl" style="font-size:11.5px">${esc(x.instrument_name||"")} · ${esc(x.country||"")}</span>`;
+      const store=x.symbol;
+      const eu=/\.(DE|F|MU|SG|DU|VI|BE|HM|MI|PA|AS|BR|MC|LS)$/.test(x.symbol)?" ★€":"";
+      const nm=x.longname||x.shortname||"";
+      const label=`<b>${esc(x.symbol)}</b> · ${esc(x.exchDisp||x.exchange||"")}${eu}<br><span class="lbl" style="font-size:11.5px">${esc(nm)}</span>`;
       return `<button type="button" class="sym-hit" onclick="pickSym('${esc(store)}')">${label}</button>`;
     }).join("");
   }catch(e){box.innerHTML='<div class="hint red">Suche fehlgeschlagen (offline?).</div>';}
@@ -680,13 +687,13 @@ function openPos(pid){
     </div>
     <div class="field"><label>Symbol (Live-Kurs, optional)</label>
       <div style="display:flex;gap:8px">
-        <input id="f_symbol" style="flex:1" value="${p?esc(p.symbol||""):""}" placeholder="z.B. SAP:XETR · leer = manuell">
+        <input id="f_symbol" style="flex:1" value="${p?esc(p.symbol||""):""}" placeholder="Yahoo-Ticker, z.B. SAP.DE · AAPL · leer = manuell">
         <button type="button" class="btn sec" style="white-space:nowrap;padding:10px 12px" onclick="symSearch()">🔍 suchen</button>
       </div>
       <div id="symResults"></div>
     </div>
     <div class="field"><label>Notiz</label><input id="f_notiz" value="${p?esc(p.notiz||""):""}"></div>
-    <div class="hint">Nur für börsengelistete Titel. Zertifikate/KOs: leer lassen → manuell. <b>Achtung Gratis-Tarif:</b> nur <b>US-Börsen</b> (NYSE/NASDAQ, USD). Deutsche Börsen (Xetra/€) brauchen einen Bezahl-Tarif → solche Titel besser <b>manuell</b> pflegen. Tipp: <b>🔍 suchen</b>, eine US-Zeile wählen.</div>
+    <div class="hint"><b>Yahoo-Finance-Ticker</b> (Kurse gratis, US <b>und</b> Xetra/EU). Format: <b>SAP.DE</b> (Xetra), <b>BY6.F</b> (Frankfurt), <b>AAPL</b> (US), <b>1810.HK</b> (Hongkong). Mit <b>🔍 suchen</b> findest du ihn (★€ = in Euro). Zertifikate/KOs &amp; nicht gelistete Werte (SpaceX): leer lassen → manuell.</div>
     <div class="sheet-actions">
       ${p?`<button class="del" onclick="delPos('${p.id}')">Löschen</button>`:""}
       <button class="btn sec" onclick="closeSheet()">Abbr.</button>
@@ -799,17 +806,13 @@ function openBackup(){
   openSheet(`
     <h2>Backup &amp; Einstellungen</h2>
     <div class="field">
-      <label>Twelve-Data API-Key (für Live-Kurse)</label>
-      <input id="f_apikey" value="${esc(state.settings.apiKey||"")}" placeholder="einmalig eintragen" autocomplete="off">
-      <div class="hint">Kostenlos unter <b>twelvedata.com</b> registrieren → „API Key" kopieren. 800 Abrufe/Tag gratis. Nur nötig, wenn du Live-Kurse willst; sonst leer lassen.</div>
-    </div>
-    <div class="sheet-actions" style="margin-bottom:12px">
-      <button class="btn" style="flex:1" onclick="saveApiKey()">Key speichern</button>
+      <label>Live-Kurse</label>
+      <div class="hint">Kurse kommen von <b>Yahoo Finance</b> über einen kostenlosen Proxy — <b>kein API-Key nötig</b>. Deckt US <b>und</b> Xetra/EU ab. Den Ticker setzt du je Position im Editor (🔍 suchen). Fremdwährungen werden automatisch in € umgerechnet.</div>
     </div>
     <div class="field" style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
       <button class="btn ${state.settings.autoRefresh?"":"sec"}" style="min-width:132px" onclick="toggleAuto()">
         Auto-Kurse: ${state.settings.autoRefresh?"An":"Aus"}</button>
-      <div class="hint" style="margin:0;flex:1">Kurse beim Start automatisch laden. Verbraucht ca. ${usageToday()}/${DAILY_CAP} Credits heute; stoppt selbst bei ${DAILY_CAP-RESERVE}, damit ${RESERVE} fürs manuelle ⟳ frei bleiben.</div>
+      <div class="hint" style="margin:0;flex:1">Kurse beim Start automatisch laden (leise, mit Kurz-Sperre gegen Neulade-Spam).</div>
     </div>
     <div class="hint" style="margin:0 0 14px">Dividenden zählen standardmäßig in „Gesamt" mit. Einzelne Werte kannst du direkt an der Position per Häkchen abwählen.</div>
     <div style="border-top:1px solid var(--line);margin:4px 0 14px;padding-top:14px">
