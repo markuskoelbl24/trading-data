@@ -127,6 +127,8 @@
   .esb-mk.b .l{width:3px;height:15px;border-radius:2px;background:var(--accent)}
   .esb-lab{position:absolute;font-size:11.5px;white-space:nowrap}
   .esb-lab .n{color:var(--muted)} .esb-lab .v{font-weight:700}
+  .esb-lab.e .v,.esb-lab .pl.e .v{color:var(--muted);font-weight:600}   /* Einstieg grau wie sein Marker */
+  .esb-lab.j .v{color:var(--txt)}                                        /* aktueller Kurs weiß wie sein Marker */
   .esb-lab.pair{display:inline-flex;gap:14px}
   .esb-lab.top{top:5px} .esb-lab.bot{top:50px}
   .esb-lab.be .v{color:var(--accent)}
@@ -424,18 +426,19 @@ function esBar(m){
   let fill="";
   if(pN!=null){const a=Math.min(pB,pN),b=Math.max(pB,pN);
     fill=`<div class="esb-fill ${up?"up":"down"}" style="left:${a}%;width:${b-a}%"></div>`;}
-  // Alle Labels mittig über ihrem Marker; clampBarLabels() schiebt sie nach dem Render nur bei Randüberlauf herein.
-  const lab=(cls,p,n,v)=>`<div class="esb-lab ${cls}" style="left:${p}%;transform:translateX(-50%)"><span class="n">${n}</span> <span class="v">${feur(v)}</span></div>`;
+  // Labels farbcodiert wie die Marker: Einstieg grau (umrandeter Punkt), jetzt weiß (voller Punkt) → Wort „jetzt" entfällt.
+  // Alle mittig über ihrem Marker; clampBarLabels() korrigiert nach dem Render Randüberlauf/Überschneidung.
+  const eLab=p=>`<div class="esb-lab top e" style="left:${p}%;transform:translateX(-50%)"><span class="n">Einstieg</span> <span class="v">${feur(E)}</span></div>`;
+  const jLab=p=>`<div class="esb-lab top j" style="left:${p}%;transform:translateX(-50%)"><span class="v">${feur(N)}</span></div>`;
   let topLabs;
-  if(pN==null){ topLabs=lab("top",pE,"Einstieg",E); }
+  if(pN==null){ topLabs=eLab(pE); }
   else if(Math.abs(pN-pE)<30){
-    // Symbole dürfen überlappen – die zwei Beschriftungen nebeneinander, zentriert auf die Marker-Mitte
+    // Symbole dürfen überlappen – Einstieg (grau) und aktueller Kurs (weiß) nebeneinander, zentriert auf die Marker-Mitte
     const mid=(pE+pN)/2;
-    const chip=(n,v)=>`<span class="pl"><span class="n">${n}</span> <span class="v">${feur(v)}</span></span>`;
-    topLabs=`<div class="esb-lab top pair" style="left:${mid}%;transform:translateX(-50%)">${chip("Einstieg",E)}${chip("jetzt",N)}</div>`;
+    topLabs=`<div class="esb-lab top pair" style="left:${mid}%;transform:translateX(-50%)"><span class="pl e"><span class="n">Einstieg</span> <span class="v">${feur(E)}</span></span><span class="pl j"><span class="v">${feur(N)}</span></span></div>`;
   }
-  else { topLabs=lab("top",pE,"Einstieg",E)+lab("top",pN,"jetzt",N); }
-  const beLab=lab("bot be",pB,"Break-even",B);
+  else { topLabs=eLab(pE)+jLab(pN); }
+  const beLab=`<div class="esb-lab bot be" style="left:${pB}%;transform:translateX(-50%)"><span class="n">Break-even</span> <span class="v">${feur(B)}</span></div>`;
   return `<div class="esb">
     <div class="esb-trk"></div>${fill}
     <div class="esb-mk e" style="left:${pE}%"><div class="d"></div></div>
