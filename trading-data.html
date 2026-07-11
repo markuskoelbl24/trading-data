@@ -418,9 +418,10 @@ function kpiBlock(m){
 
 function esBar(m){
   const E=m.erstEinstieg, B=m.breakEven, N=m.hasKurs?m.kurs:NaN;
-  // Skala mit fester Empfindlichkeit: Break-even = Mitte; Einstieg/Kurs nach ihrem echten %-Abstand.
-  // Kleine Abstände bleiben klein; ab ±CAP% schlägt es voll aus (20% und 40% sehen dann gleich aus – bewusst).
-  const CAP=25, C=B||E||1;
+  // Feste Empfindlichkeit um die Wert-Mitte: Reihenfolge bleibt nach Wert (höher = weiter rechts).
+  // Kleine %-Abstände bleiben klein (Marker clustern), ab ±CAP% schlägt es voll aus (20%/40% sehen dann gleich aus).
+  const vals=[E,B]; if(!isNaN(N))vals.push(N);
+  const CAP=25, C=(Math.min(...vals)+Math.max(...vals))/2 || E || 1;
   const P=v=>{ let d=(v/C-1)*100/CAP; d=Math.max(-1,Math.min(1,d)); return 50+d*48; };
   const up=!isNaN(N)&&N>=B;
   const pE=P(E),pB=P(B),pN=isNaN(N)?null:P(N);
