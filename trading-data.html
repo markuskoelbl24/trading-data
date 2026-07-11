@@ -418,11 +418,14 @@ function kpiBlock(m){
 
 function esBar(m){
   const E=m.erstEinstieg, B=m.breakEven, N=m.hasKurs?m.kurs:NaN;
-  // Feste Empfindlichkeit um die Wert-Mitte: Reihenfolge bleibt nach Wert (höher = weiter rechts).
-  // Kleine %-Abstände bleiben klein (Marker clustern), ab ±CAP% schlägt es voll aus (20%/40% sehen dann gleich aus).
+  // Auto-Fit nach Wert (kleinster Wert links, größter rechts) MIT Mindest-Spanne:
+  // normale Spannen füllen die Leiste; nur winzige %-Abstände clustern in der Mitte (kein Voll-Zoom auf 0,6%).
   const vals=[E,B]; if(!isNaN(N))vals.push(N);
-  const CAP=25, C=(Math.min(...vals)+Math.max(...vals))/2 || E || 1;
-  const P=v=>{ let d=(v/C-1)*100/CAP; d=Math.max(-1,Math.min(1,d)); return 50+d*48; };
+  let lo=Math.min(...vals), hi=Math.max(...vals);
+  const mid=(lo+hi)/2||1, minSpan=mid*0.10;                 // < ~10% Spanne → nicht auf volle Breite ziehen
+  if(hi-lo<minSpan){ lo=mid-minSpan/2; hi=mid+minSpan/2; }
+  const pad=(hi-lo)*0.06; lo-=pad; hi+=pad;
+  const P=v=>Math.max(2,Math.min(98,(v-lo)/(hi-lo)*100));
   const up=!isNaN(N)&&N>=B;
   const pE=P(E),pB=P(B),pN=isNaN(N)?null:P(N);
   let fill="";
