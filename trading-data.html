@@ -367,6 +367,38 @@ function render(){
     closedIdx.forEach(idx=>sec.appendChild(renderPos(state.positions[idx],metrics[idx],idx)));
     list.appendChild(sec);
   }
+  scheduleClamp();
+}
+
+// Doppel-rAF: erst nach dem finalen Layout messen (sonst greift der Klemm-Schritt zu früh); zusätzlich nach Font-Load.
+function scheduleClamp(){
+  requestAnimationFrame(()=>requestAnimationFrame(clampBarLabels));
+  if(document.fonts&&document.fonts.ready) document.fonts.ready.then(()=>requestAnimationFrame(clampBarLabels));
+}
+// Labels sitzen mittig überm Marker; hier nur bei Überlauf minimal in die Leiste schieben.
+function clampBarLabels(){
+  const clampInto=(l,br)=>{ const lr=l.getBoundingClientRect(); let dx=0;
+    if(lr.left<br.left) dx=br.left-lr.left; else if(lr.right>br.right) dx=br.right-lr.right;
+    if(dx) l.style.marginLeft=Math.round((parseFloat(l.style.marginLeft)||0)+dx)+"px"; };
+  document.querySelectorAll(".esb").forEach(bar=>{
+    if(!bar.clientWidth)return;                    // eingeklappt/versteckt → überspringen
+    const br=bar.getBoundingClientRect();
+    bar.querySelectorAll(".esb-lab").forEach(l=>{ l.style.marginLeft="0px"; clampInto(l,br); });
+    // Zwei getrennte obere Labels (Einstieg/jetzt): berühren sie sich, als Block um die Marker-Mitte neu setzen.
+    const tops=[...bar.querySelectorAll(".esb-lab.top")];
+    if(tops.length===2){
+      let [L,R]=tops; let a=L.getBoundingClientRect(), b=R.getBoundingClientRect();
+      if(a.left>b.left){ [L,R]=[R,L]; [a,b]=[b,a]; }
+      const gap=10;
+      if(a.right+gap>b.left){                        // Überlappung
+        const gw=a.width+gap+b.width;                // Breite des Label-Blocks
+        let gL=(a.left+a.width/2 + b.left+b.width/2)/2 - gw/2;   // zentriert auf die Marker-Mitte
+        gL=Math.max(br.left, Math.min(gL, br.right-gw));         // in die Leiste klemmen
+        const setL=(el,rect,target)=>{ el.style.marginLeft=Math.round((parseFloat(el.style.marginLeft)||0)+(target-rect.left))+"px"; };
+        setL(L,a,gL); setL(R,b,gL+a.width+gap);
+      }
+    }
+  });
 }
 
 function kpiBlock(m){
@@ -392,21 +424,18 @@ function esBar(m){
   let fill="";
   if(pN!=null){const a=Math.min(pB,pN),b=Math.max(pB,pN);
     fill=`<div class="esb-fill ${up?"up":"down"}" style="left:${a}%;width:${b-a}%"></div>`;}
-  const lab=(cls,p,n,v,anch)=>`<div class="esb-lab ${cls}" style="left:${p}%;${anch}"><span class="n">${n}</span> <span class="v">${feur(v)}</span></div>`;
-  // Einstieg + jetzt oben, links/rechts verankert (max. Abstand → keine Kollision); Break-even unten
+  // Alle Labels mittig über ihrem Marker; clampBarLabels() schiebt sie nach dem Render nur bei Randüberlauf herein.
+  const lab=(cls,p,n,v)=>`<div class="esb-lab ${cls}" style="left:${p}%;transform:translateX(-50%)"><span class="n">${n}</span> <span class="v">${feur(v)}</span></div>`;
   let topLabs;
-  if(pN==null){ topLabs=lab("top",pE,"Einstieg",E,"transform:translateX(-50%)"); }
+  if(pN==null){ topLabs=lab("top",pE,"Einstieg",E); }
   else if(Math.abs(pN-pE)<30){
-    // Symbole dürfen überlappen – die zwei Beschriftungen stehen nebeneinander (mittig), nicht zwingend überm Punkt
+    // Symbole dürfen überlappen – die zwei Beschriftungen nebeneinander, zentriert auf die Marker-Mitte
     const mid=(pE+pN)/2;
-    const anch = mid>66?"transform:translateX(-100%)": mid<34?"transform:translateX(0)":"transform:translateX(-50%)";
     const chip=(n,v)=>`<span class="pl"><span class="n">${n}</span> <span class="v">${feur(v)}</span></span>`;
-    topLabs=`<div class="esb-lab top pair" style="left:${mid}%;${anch}">${chip("Einstieg",E)}${chip("jetzt",N)}</div>`;
+    topLabs=`<div class="esb-lab top pair" style="left:${mid}%;transform:translateX(-50%)">${chip("Einstieg",E)}${chip("jetzt",N)}</div>`;
   }
-  else if(pE<=pN){ topLabs=lab("top",pE,"Einstieg",E,"transform:translateX(0)")+lab("top",pN,"jetzt",N,"transform:translateX(-100%)"); }
-  else { topLabs=lab("top",pN,"jetzt",N,"transform:translateX(0)")+lab("top",pE,"Einstieg",E,"transform:translateX(-100%)"); }
-  const bA = pB>66?"transform:translateX(-100%)": pB<34?"transform:translateX(0)":"transform:translateX(-50%)";
-  const beLab=lab("bot be",pB,"Break-even",B,bA);
+  else { topLabs=lab("top",pE,"Einstieg",E)+lab("top",pN,"jetzt",N); }
+  const beLab=lab("bot be",pB,"Break-even",B);
   return `<div class="esb">
     <div class="esb-trk"></div>${fill}
     <div class="esb-mk e" style="left:${pE}%"><div class="d"></div></div>
@@ -995,6 +1024,7 @@ let priceTimer=null;
 function startPriceTimer(){ clearInterval(priceTimer); if(state.settings.autoRefresh===false) return;
   priceTimer=setInterval(()=>{ if(document.visibilityState==="visible") refreshPrices(true); }, 300000); }
 document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible" && state.settings.autoRefresh!==false) refreshPrices(true); });
+let clampT; addEventListener("resize",()=>{ clearTimeout(clampT); clampT=setTimeout(scheduleClamp,120); });
 startPriceTimer();
 // Beim Start mit GitHub abgleichen (holen → mergen → zurückschreiben)
 if(syncReady()) fullSync(false);
