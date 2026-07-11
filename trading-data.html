@@ -285,7 +285,7 @@ function render(){
       ${syncReady()?`<button class="btn ghost" style="padding:5px 10px" onclick="fullSync(true)">⇅ Sync</button>`:""}
       ${hasSym?`<button id="refreshBtn" class="btn ghost" style="padding:5px 10px" onclick="refreshPrices()">⟳ Kurse</button>`:""}
       <span class="badge">${state.positions.length} Positionen</span></div>
-    ${hasSym&&upd?`<div class="hint" style="margin-top:2px">Kurse-Stand: ${new Date(upd).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})} Uhr${state.settings.autoRefresh?" · Auto an":""}</div>`:""}
+    ${hasSym&&upd?`<div class="hint" style="margin-top:2px">Zuletzt abgerufen: ${new Date(upd).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})} Uhr${state.settings.autoRefresh?" · Auto an":""} · Kurs-Zeit steht je Wert</div>`:""}
     <div class="kpis">
       <div class="kpi"><div class="k">Realisiert (FIFO)</div><div class="v ${cls(tReal)}">${signEur(tReal)}</div></div>
       <div class="kpi"><div class="k">Unrealisiert</div><div class="v ${cls(tUnreal)}">${signEur(tUnreal)}</div></div>
@@ -413,7 +413,7 @@ function renderPos(p,m,idx){
     ${m.openQty>0&&!isNaN(m.erstEinstieg)?esBar(m):""}
     <div class="meta">
       ${openLine}
-      ${m.openQty>0?`<span>Kurs jetzt: <b>${m.hasKurs?feur(m.kurs):"—"}</b>${p.fxFrom?` <span class="lbl">(≈ aus ${esc(p.fxFrom)})</span>`:""} → Wert ${feur(m.curVal)}</span>`:""}
+      ${m.openQty>0?`<span>Kurs jetzt: <b>${m.hasKurs?feur(m.kurs):"—"}</b>${p.fxFrom?` <span class="lbl">(≈ aus ${esc(p.fxFrom)})</span>`:""}${p.kursTime?` <span class="lbl">· ${esc(kursTimeLbl(p.kursTime))}</span>`:""} → Wert ${feur(m.curVal)}</span>`:""}
       ${m.divs?`<button class="divchip ${p.divOff?"off":""}" onclick="toggleDivOff('${p.id}')" title="Dividende in Gesamt mitzählen">
         <span class="cbox">${p.divOff?"":"✓"}</span> Div ${feur(m.divs)} in Gesamt</button>`:""}
     </div>
@@ -435,7 +435,7 @@ function renderPos(p,m,idx){
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
 
 /* ---------- Kurs schnell setzen ---------- */
-function setKurs(pid,val){const p=find(pid);if(!p)return;p.kursAktuell=val;p.fxFrom="";touch(p);save();render();syncPushLater();}
+function setKurs(pid,val){const p=find(pid);if(!p)return;p.kursAktuell=val;p.fxFrom="";p.kursTime="";touch(p);save();render();syncPushLater();}
 function toggleDivOff(pid){const p=find(pid);if(!p)return;p.divOff=!p.divOff;touch(p);save();render();syncPushLater();}
 function find(pid){return state.positions.find(p=>p.id===pid);}
 
@@ -488,7 +488,18 @@ async function yahooQuote(sym){
   const b=await proxyJSON(u);
   const m=b&&b.chart&&b.chart.result&&b.chart.result[0]&&b.chart.result[0].meta;
   if(!m || m.regularMarketPrice==null) throw new Error("kein Kurs (Ticker prüfen)");
-  return {price:+m.regularMarketPrice, cur:m.currency||"EUR"};
+  return {price:+m.regularMarketPrice, cur:m.currency||"EUR", time:(m.regularMarketTime?m.regularMarketTime*1000:0)};
+}
+// Zeigt, VON WANN der Kurs ist (Börsen-Zeitstempel) — heute = evtl. live (~15 Min verzögert), sonst Schlusskurs.
+function kursTimeLbl(ms){
+  if(!ms) return "";
+  const d=new Date(ms), now=new Date();
+  const hm=d.toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit"});
+  if(d.toDateString()===now.toDateString()) return "Stand heute "+hm;
+  const y=new Date(now); y.setDate(now.getDate()-1);
+  if(d.toDateString()===y.toDateString()) return "Stand gestern "+hm;
+  const wd=["So","Mo","Di","Mi","Do","Fr","Sa"][d.getDay()];
+  return "Stand "+wd+" "+d.toLocaleDateString("de-DE",{day:"2-digit",month:"2-digit"})+" "+hm;
 }
 async function refreshPrices(auto){
   if(priceBusy)return;
@@ -518,7 +529,7 @@ async function refreshPrices(auto){
         if(fx[q.cur]===undefined){ const msg=s+" — €-Umrechnung ("+q.cur+") nicht verfügbar"; if(!fail.includes(msg))fail.push(msg); continue; }
         eur=q.price*fx[q.cur]; from=q.cur;
       }
-      p.kursAktuell=(+(eur.toFixed(eur<10?4:2))+"").replace(".",","); p.fxFrom=from;
+      p.kursAktuell=(+(eur.toFixed(eur<10?4:2))+"").replace(".",","); p.fxFrom=from; p.kursTime=q.time||Date.now();
       ok++;
     }
     state.settings.pricesUpdated=Date.now();
