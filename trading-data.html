@@ -132,15 +132,16 @@
   .sym-hit:active{background:var(--line)}
 </style>
 
-<h1>Trading-Data <span style="font-size:12px;color:var(--muted);font-weight:400">FIFO</span></h1>
-<div class="sub">Du gibst nur Käufe &amp; Verkäufe ein — die Zuordnung rechnet das Tool automatisch nach <b>FIFO</b> (wie dein Broker). „Realisiert" = steuerrelevant/Broker · „Gesamt" = deine echte Positions-Sicht · „Break-even" = Kurs, den die Reststücke für ±0 auf die ganze Position brauchen (zeigt, wie weit du den Einstieg runtergetradet hast).</div>
+<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 14px">
+  <h1 style="margin:0">Trading-Data <span style="font-size:12px;color:var(--muted);font-weight:400">FIFO</span></h1>
+  <button class="btn ghost" style="flex:none;padding:8px 13px;font-size:14px;color:#c3ccd6" onclick="openBackup()"><span style="font-size:20px;vertical-align:-3px">⚙︎</span> Setup</button>
+</div>
 
 <div id="total" class="total"></div>
 <div id="list"></div>
 
 <div class="fab">
   <button class="btn" onclick="openPos()">+ Position</button>
-  <button class="btn sec" onclick="openBackup()">Backup</button>
 </div>
 
 <div class="overlay" id="overlay"><div class="sheet" id="sheet"></div></div>
@@ -511,9 +512,15 @@ async function refreshPrices(auto){
   try{
     // Pro Symbol EINZELN → ein kaputter Ticker blockiert die anderen nicht.
     const quotes={}; const fail=[];
-    for(const sym of syms){
-      try{ quotes[sym]=await yahooQuote(sym); }
-      catch(e){ fail.push(sym+" — "+(e.message||"kein Kurs")); }
+    const CHUNK=4;   // wenige parallel → schont den Gratis-Proxy (zu viele auf einmal → TypeError)
+    for(let i=0;i<syms.length;i+=CHUNK){
+      await Promise.all(syms.slice(i,i+CHUNK).map(async sym=>{
+        for(let a=0;a<3;a++){                                  // bis zu 3 Versuche (Proxy zickt gern kurz)
+          try{ quotes[sym]=await yahooQuote(sym); return; }
+          catch(e){ if(a<2){ await sleep(400); continue; } fail.push(sym+" — "+(e.message||"kein Kurs")); }
+        }
+      }));
+      if(i+CHUNK<syms.length) await sleep(200);                // kleine Pause zwischen den Bündeln
     }
     // Fremdwährungen → EUR (je Währung einmal, kostenlos ohne Key)
     const curs=[...new Set(Object.values(quotes).map(q=>q.cur).filter(c=>c&&c!=="EUR"))];
@@ -820,7 +827,7 @@ function openBackup(){
     <h2>Backup &amp; Einstellungen</h2>
     <div class="field">
       <label>Live-Kurse</label>
-      <div class="hint">Kurse kommen von <b>Yahoo Finance</b> über einen kostenlosen Proxy — <b>kein API-Key nötig</b>. Deckt US <b>und</b> Xetra/EU ab. Den Ticker setzt du je Position im Editor (🔍 suchen). Fremdwährungen werden automatisch in € umgerechnet.</div>
+      <div class="hint">Kurse kommen von <b>Yahoo Finance</b> über einen kostenlosen Proxy — <b>kein API-Key nötig</b>. Fremdwährungen werden automatisch in € umgerechnet.</div>
     </div>
     <div class="field" style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
       <button class="btn ${state.settings.autoRefresh?"":"sec"}" style="min-width:132px" onclick="toggleAuto()">
@@ -830,7 +837,7 @@ function openBackup(){
     <div style="border-top:1px solid var(--line);margin:4px 0 14px;padding-top:14px">
       <div class="row" style="margin-bottom:8px"><b>Sync über GitHub</b><div class="spacer"></div>
         <button class="btn ${state.settings.autoSync?"":"sec"} sm" onclick="toggleAutoSync()">Auto: ${state.settings.autoSync?"An":"Aus"}</button></div>
-      <div class="hint" style="margin:0 0 10px">Privates Repo, damit iPhone &amp; Mac dieselben Daten haben. Es werden <b>nur die Positionen</b> hochgeladen — <b>nicht</b> dein Token/API-Key.</div>
+      <div class="hint" style="margin:0 0 10px">Deine Positionen werden im privaten Repo „trading-sync" gesichert — <b>nur die Positionen</b>, nicht dein Token/API-Key.</div>
       <div class="two">
         <div class="field"><label>Repo (owner/name)</label><input id="f_ghrepo" value="${esc((state.settings.gh||{}).repo||"")}" placeholder="markus/trading-data" autocomplete="off"></div>
         <div class="field"><label>Datei</label><input id="f_ghpath" value="${esc((state.settings.gh||{}).path||"trading.json")}" autocomplete="off"></div>
@@ -846,13 +853,12 @@ function openBackup(){
       </div>
       <div class="hint" style="margin-top:8px">${state.settings.syncedAt?"Zuletzt: "+new Date(state.settings.syncedAt).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})+" Uhr":"Noch nie synchronisiert."}</div>
     </div>
-    <div class="hint" style="margin-bottom:12px">Alle Daten liegen (auch) lokal im Browser. Für Sicherung/Umzug ohne GitHub: als Datei exportieren.</div>
     <div class="sheet-actions" style="margin-bottom:10px">
       <button class="btn" onclick="exportJson()">⤓ Export (.json)</button>
       <button class="btn sec" onclick="document.getElementById('imp').click()">⤒ Import</button>
     </div>
     <input type="file" id="imp" accept="application/json,.json" style="display:none" onchange="importJson(this)">
-    <div class="hint" style="margin-top:12px">Import <b>ersetzt</b> die aktuellen Daten.</div>
+    <div class="hint" style="margin-top:6px;text-align:right">Import <b>ersetzt</b> die aktuellen Daten.</div>
     <div class="sheet-actions" style="margin-top:14px">
       <button class="btn sec" style="flex:1" onclick="closeSheet()">Schließen</button>
     </div>`);
