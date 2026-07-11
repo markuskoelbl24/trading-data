@@ -681,7 +681,9 @@ function setSyncStatus(t){ const e=document.getElementById("syncStatus"); if(e)e
 const ov=document.getElementById("overlay"), sheet=document.getElementById("sheet");
 function openSheet(html){sheet.innerHTML=html;ov.classList.add("on");}
 function closeSheet(){ov.classList.remove("on");sheet.innerHTML="";}
-ov.addEventListener("click",e=>{if(e.target===ov)closeSheet();});
+let ovDownBd=false;
+ov.addEventListener("pointerdown",e=>{ovDownBd=(e.target===ov);});
+ov.addEventListener("click",e=>{if(e.target===ov && ovDownBd)closeSheet();}); // nur schließen, wenn Klick auch auf dem Hintergrund BEGANN (sonst schließt Text-Markieren übers Fenster hinaus)
 
 /* ---------- Position anlegen/bearbeiten ---------- */
 function openPos(pid){
@@ -825,7 +827,6 @@ function openBackup(){
         Auto-Kurse: ${state.settings.autoRefresh?"An":"Aus"}</button>
       <div class="hint" style="margin:0;flex:1">Kurse beim Start automatisch laden (leise, mit Kurz-Sperre gegen Neulade-Spam).</div>
     </div>
-    <div class="hint" style="margin:0 0 14px">Dividenden zählen standardmäßig in „Gesamt" mit. Einzelne Werte kannst du direkt an der Position per Häkchen abwählen.</div>
     <div style="border-top:1px solid var(--line);margin:4px 0 14px;padding-top:14px">
       <div class="row" style="margin-bottom:8px"><b>Sync über GitHub</b><div class="spacer"></div>
         <button class="btn ${state.settings.autoSync?"":"sec"} sm" onclick="toggleAutoSync()">Auto: ${state.settings.autoSync?"An":"Aus"}</button></div>
@@ -851,7 +852,6 @@ function openBackup(){
       <button class="btn sec" onclick="document.getElementById('imp').click()">⤒ Import</button>
     </div>
     <input type="file" id="imp" accept="application/json,.json" style="display:none" onchange="importJson(this)">
-    <button class="btn ghost" style="width:100%" onclick="loadDemo()">Beispiel laden (FIFO-Demo)</button>
     <div class="hint" style="margin-top:12px">Import <b>ersetzt</b> die aktuellen Daten.</div>
     <div class="sheet-actions" style="margin-top:14px">
       <button class="btn sec" style="flex:1" onclick="closeSheet()">Schließen</button>
