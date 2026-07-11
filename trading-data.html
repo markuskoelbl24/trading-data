@@ -130,6 +130,8 @@
   .esb-lab.e .v,.esb-lab .pl.e .v{color:var(--muted);font-weight:600}   /* Einstieg grau wie sein Marker */
   .esb-lab.j .v{color:var(--txt)}                                        /* aktueller Kurs weiß wie sein Marker */
   .esb-lab.pair{display:inline-flex;gap:14px}
+  .esb-pct{position:absolute;top:38px;transform:translate(-50%,-50%);font-size:11px;font-weight:700;background:var(--card);padding:1px 5px;border-radius:6px;white-space:nowrap}
+  .esb-pct.up{color:var(--green)} .esb-pct.down{color:var(--red)}
   .esb-lab.top{top:5px} .esb-lab.bot{top:50px}
   .esb-lab.be .v{color:var(--accent)}
   /* Portfolio-Summe */
@@ -385,7 +387,7 @@ function clampBarLabels(){
   document.querySelectorAll(".esb").forEach(bar=>{
     if(!bar.clientWidth)return;                    // eingeklappt/versteckt → überspringen
     const br=bar.getBoundingClientRect();
-    bar.querySelectorAll(".esb-lab").forEach(l=>{ l.style.marginLeft="0px"; clampInto(l,br); });
+    bar.querySelectorAll(".esb-lab,.esb-pct").forEach(l=>{ l.style.marginLeft="0px"; clampInto(l,br); });
     // Zwei getrennte obere Labels (Einstieg/jetzt): berühren sie sich, als Block um die Marker-Mitte neu setzen.
     const tops=[...bar.querySelectorAll(".esb-lab.top")];
     if(tops.length===2){
@@ -439,12 +441,19 @@ function esBar(m){
   }
   else { topLabs=eLab(pE)+jLab(pN); }
   const beLab=`<div class="esb-lab bot be" style="left:${pB}%;transform:translateX(-50%)"><span class="n">Break-even</span> <span class="v">${feur(B)}</span></div>`;
+  // %-Abstand des aktuellen Kurses zum Break-even – macht die Größenordnung sichtbar (auto-gezoomte Leiste zeigt sie sonst nicht)
+  let pctLab="";
+  if(pN!=null && B){
+    const d=(N/B-1)*100;
+    const txt=(up?"+":"−")+Math.abs(d).toLocaleString("de-DE",{minimumFractionDigits:1,maximumFractionDigits:1})+" %";
+    pctLab=`<div class="esb-pct ${up?"up":"down"}" style="left:${(pB+pN)/2}%">${txt}</div>`;
+  }
   return `<div class="esb">
     <div class="esb-trk"></div>${fill}
     <div class="esb-mk e" style="left:${pE}%"><div class="d"></div></div>
     ${pN!=null?`<div class="esb-mk j" style="left:${pN}%"><div class="d"></div></div>`:""}
     <div class="esb-mk b" style="left:${pB}%"><div class="l"></div></div>
-    ${topLabs}${beLab}
+    ${pctLab}${topLabs}${beLab}
   </div>`;
 }
 // Tagestrend (global %/€) und Gesamt (global €/%) – beide antippbar
