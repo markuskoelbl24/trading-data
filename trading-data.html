@@ -127,6 +127,7 @@
   .esb-mk.b .l{width:3px;height:15px;border-radius:2px;background:var(--accent)}
   .esb-lab{position:absolute;font-size:11.5px;white-space:nowrap}
   .esb-lab .n{color:var(--muted)} .esb-lab .v{font-weight:700}
+  .esb-lab.pair{display:inline-flex;gap:14px}
   .esb-lab.top{top:5px} .esb-lab.bot{top:50px}
   .esb-lab.be .v{color:var(--accent)}
   /* Portfolio-Summe */
@@ -396,10 +397,11 @@ function esBar(m){
   let topLabs;
   if(pN==null){ topLabs=lab("top",pE,"Einstieg",E,"transform:translateX(-50%)"); }
   else if(Math.abs(pN-pE)<30){
-    // zu nah beieinander → ein gemeinsames Label nebeneinander (statt überlappend)
+    // Symbole dürfen überlappen – die zwei Beschriftungen stehen nebeneinander (mittig), nicht zwingend überm Punkt
     const mid=(pE+pN)/2;
     const anch = mid>66?"transform:translateX(-100%)": mid<34?"transform:translateX(0)":"transform:translateX(-50%)";
-    topLabs=`<div class="esb-lab top" style="left:${mid}%;${anch}"><span class="n">Einstieg</span> <span class="v">${feur(E)}</span> <span class="n">· jetzt</span> <span class="v">${feur(N)}</span></div>`;
+    const chip=(n,v)=>`<span class="pl"><span class="n">${n}</span> <span class="v">${feur(v)}</span></span>`;
+    topLabs=`<div class="esb-lab top pair" style="left:${mid}%;${anch}">${chip("Einstieg",E)}${chip("jetzt",N)}</div>`;
   }
   else if(pE<=pN){ topLabs=lab("top",pE,"Einstieg",E,"transform:translateX(0)")+lab("top",pN,"jetzt",N,"transform:translateX(-100%)"); }
   else { topLabs=lab("top",pN,"jetzt",N,"transform:translateX(0)")+lab("top",pE,"Einstieg",E,"transform:translateX(-100%)"); }
