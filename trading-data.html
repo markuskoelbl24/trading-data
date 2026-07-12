@@ -699,7 +699,11 @@ let syncBusy=false, pushTimer=null;
 function ghCfg(){const g=state.settings.gh||{};return {token:(g.token||"").trim(),repo:(g.repo||"").trim(),
   path:(g.path||"trading.json").trim(),branch:(g.branch||"main").trim()};}
 function syncReady(){const c=ghCfg();return !!(c.token&&c.repo&&c.path);}
-function b64encode(str){return btoa(String.fromCharCode.apply(null,new TextEncoder().encode(str)));}
+function b64encode(str){ // in Blöcken kodieren, sonst sprengt fromCharCode.apply bei großen Daten den Call-Stack (v.a. mobil)
+  const bytes=new TextEncoder().encode(str); let bin=""; const CH=0x8000;
+  for(let i=0;i<bytes.length;i+=CH) bin+=String.fromCharCode.apply(null,bytes.subarray(i,i+CH));
+  return btoa(bin);
+}
 function b64decode(b64){return new TextDecoder().decode(Uint8Array.from(atob(b64),c=>c.charCodeAt(0)));}
 function u(o){return (o&&o._u)||0;}
 
