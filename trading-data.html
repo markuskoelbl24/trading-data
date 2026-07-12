@@ -477,7 +477,7 @@ function gesHtml(m){
 }
 function toggleDayMode(e){if(e)e.stopPropagation();state.settings.dayMode=state.settings.dayMode==="eur"?"pct":"eur";save();render();}
 function toggleGesMode(e){if(e)e.stopPropagation();state.settings.gesMode=state.settings.gesMode==="pct"?"eur":"pct";save();render();}
-function toggleCollapse(id){const c=state.settings.collapsed||(state.settings.collapsed={});c[id]=!c[id];save();render();}
+function toggleCollapse(id){const c=state.settings.collapsed||(state.settings.collapsed={});c[id]=!c[id];state.settings.collapsedAt=Date.now();save();render();syncPushLater();}
 function setSort(s){state.settings.sortBy=s;save();render();}
 
 function renderPos(p,m,idx){
@@ -710,8 +710,9 @@ function b64encode(str){ // in Blöcken kodieren, sonst sprengt fromCharCode.app
 function b64decode(b64){return new TextDecoder().decode(Uint8Array.from(atob(b64),c=>c.charCodeAt(0)));}
 function u(o){return (o&&o._u)||0;}
 
-// Nur Positionen + Tombstones werden gesynct (KEINE settings/Token/Keys)
-function syncPayload(){return {positions:state.positions, tombstones:state.tombstones||{}, syncedAt:Date.now()};}
+// Gesynct werden Positionen + Tombstones + der Zuklapp-Zustand (KEINE Token/Keys)
+function syncPayload(){return {positions:state.positions, tombstones:state.tombstones||{},
+  collapsed:state.settings.collapsed||{}, collapsedAt:state.settings.collapsedAt||0, syncedAt:Date.now()};}
 
 // Zwei Listen (tx bzw. div) nach id + Änderungszeit + Tombstones zusammenführen
 function mergeList(a,b,tomb){
@@ -747,7 +748,10 @@ function mergeStates(local,remote){
     if(tomb[id] && tomb[id]>=u(base)) continue;
     positions.push(merged);
   }
-  return {positions, tombstones:tomb};
+  // Zuklapp-Zustand: die zuletzt geänderte Ansicht gewinnt (Last-Writer-Wins per Zeitstempel)
+  const lAt=local.collapsedAt||0, rAt=remote.collapsedAt||0;
+  const collapsed = rAt>lAt ? (remote.collapsed||{}) : (local.collapsed||{});
+  return {positions, tombstones:tomb, collapsed, collapsedAt:Math.max(lAt,rAt)};
 }
 
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -784,8 +788,10 @@ async function fullSync(manual){
     let done=false, lastErr=null;
     for(let attempt=0; attempt<5 && !done; attempt++){
       const {data:remote,sha}=await ghGet();     // cache-umgehend → aktuelle sha
-      const merged=mergeStates({positions:state.positions,tombstones:state.tombstones}, remote);
+      const merged=mergeStates({positions:state.positions,tombstones:state.tombstones,
+        collapsed:state.settings.collapsed,collapsedAt:state.settings.collapsedAt}, remote);
       state.positions=merged.positions; state.tombstones=merged.tombstones;
+      state.settings.collapsed=merged.collapsed; state.settings.collapsedAt=merged.collapsedAt;
       save(); render();
       try{ await ghPut(syncPayload(), sha); done=true; }
       catch(e){ lastErr=e; if(e.status===409){ await sleep(500); continue; } throw e; } // sha veraltet → neu holen
