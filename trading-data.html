@@ -31,8 +31,8 @@
   .badge{font-size:11px;color:var(--muted);background:var(--card2);border:1px solid var(--line);
     padding:2px 8px;border-radius:999px;white-space:nowrap}
   .titel{font-size:17px;font-weight:700;line-height:1.15}
-  .kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:11px 0 4px}
-  .kpi{background:var(--card2);border:1px solid var(--line);border-radius:11px;padding:9px 10px}
+  .kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin:11px 0 4px}
+  .kpi{background:var(--card2);border:1px solid var(--line);border-radius:11px;padding:9px 8px}
   .kpi .k{font-size:11px;color:var(--muted);margin-bottom:3px}
   .kpi .v{font-size:clamp(13px,4.2vw,15.5px);font-weight:700;white-space:nowrap;letter-spacing:-.2px}
   .kpi .v2{font-size:11.5px;font-weight:600;color:var(--muted)}
@@ -101,6 +101,7 @@
   .titel .chev{color:var(--muted);font-size:12px;font-weight:400;margin-left:5px}
   .ph-sub{color:var(--muted);font-size:13px;margin-top:4px;display:flex;flex-wrap:wrap;gap:3px 9px;align-items:center}
   .ph-sub b{color:var(--txt);font-weight:700}
+  .ph-sub .ph-ges{white-space:nowrap}
   .ph-sub .gv{cursor:pointer}
   .ph-sub .gv.green{color:var(--green)} .ph-sub .gv.red{color:var(--red)}
   .ph-right{text-align:right;white-space:nowrap}
@@ -138,7 +139,7 @@
   .total{background:linear-gradient(180deg,var(--card2),var(--card));border:1px solid var(--line);
     border-radius:var(--radius);padding:13px 14px;margin-bottom:6px}
   .total .kpis{margin:8px 0 0}
-  .total .v{font-size:clamp(13.5px,4.4vw,17px)}
+  .total .v{font-size:clamp(13px,4vw,15.5px)}
   /* Overlay/Modal */
   .overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;z-index:50;
     align-items:flex-end;justify-content:center}
@@ -517,7 +518,8 @@ function renderPos(p,m,idx){
   }
   const collapsed=(state.settings.collapsed||{})[p.id];
   const stopBadge = p.stop?` <span class="badge${belowStop?" badge-red":""}">Stop ${feur(num(p.stop))}</span>`:"";
-  const subLeft = m.openQty>0 ? `Position <b>${feur(m.curVal)}</b> · Gesamt ${gesHtml(m)}` : `Geschlossen · Gesamt ${gesHtml(m)}`;
+  const gesWrap = `<span class="ph-ges">Gesamt ${gesHtml(m)}</span>`;
+  const subLeft = m.openQty>0 ? `<span>Position <b>${feur(m.curVal)}</b></span> ${gesWrap}` : `<span>Geschlossen</span> ${gesWrap}`;
   const right = m.openQty>0 ? `<div class="ph-right"><div class="ph-kurs">${m.hasKurs?feur(m.kurs):"—"}</div>${dayHtml(p,m)}</div>` : "";
   el.innerHTML=`
     <div class="pos-head" onclick="toggleCollapse('${p.id}')">
