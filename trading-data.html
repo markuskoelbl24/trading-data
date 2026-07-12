@@ -328,9 +328,11 @@ function render(){
       <span id="syncStatus" class="lbl" style="font-size:11.5px;color:var(--muted)"></span>
       <div class="spacer"></div>
       ${syncReady()?`<button class="btn ghost" style="padding:5px 10px" onclick="fullSync(true)">⇅ Sync</button>`:""}
-      ${hasSym?`<button id="refreshBtn" class="btn ghost" style="padding:5px 10px" onclick="refreshPrices()">⟳ Kurse</button>`:""}
+      ${hasSym?`<button id="refreshBtn" class="btn ghost" style="padding:5px 10px" onclick="refreshPrices()">⟳ Kurse</button>`:""}</div>
+    <div class="row" style="margin-top:2px">
+      <span class="hint" style="margin:0">${hasSym&&upd?`Zuletzt abgerufen: ${new Date(upd).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})} Uhr`:""}</span>
+      <div class="spacer"></div>
       <span class="badge">${state.positions.length} Positionen</span></div>
-    ${hasSym&&upd?`<div class="hint" style="margin-top:2px">Zuletzt abgerufen: ${new Date(upd).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})} Uhr</div>`:""}
     <div class="kpis">
       <div class="kpi"><div class="k">Realisiert (FIFO)</div><div class="v ${cls(tReal)}">${signEur(tReal)}</div></div>
       <div class="kpi"><div class="k">Unrealisiert</div><div class="v ${cls(tUnreal)}">${signEur(tUnreal)}</div></div>
