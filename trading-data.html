@@ -489,7 +489,7 @@ function renderPos(p,m,idx){
   const fxNote = p.fxFrom?` · <span class="lbl">≈ aus ${esc(p.fxFrom)}</span>`:"";
   const tsNote = (p.kursTime&&(Date.now()-p.kursTime>18e5))?` · <span class="lbl">${esc(kursTimeLbl(p.kursTime))}</span>`:"";
   const openLine = m.openQty>0
-    ? `<span><b>${numf.format(m.openQty)}</b> St. offen · Ø ${feur(m.avg)}${fxNote}${tsNote}</span>`
+    ? `<span><b>${numf.format(m.openQty)}</b> St. · Ø ${feur(m.avg)}${fxNote}${tsNote}</span>`
     : `<span>Position geschlossen</span>`;
   // Transaktionsliste
   let txHtml="";
