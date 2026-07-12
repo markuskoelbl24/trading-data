@@ -74,7 +74,8 @@
   .tag.kauf{background:rgba(76,139,245,.16);color:#8fb6ff}
   .tag.verkauf{background:rgba(233,178,58,.16);color:#f0cd75}
   .tag.div{background:rgba(57,192,122,.16);color:#7fe0ac}
-  .tx .desc{color:var(--muted);font-size:12px}
+  .tx .desc{color:var(--muted);font-size:12px;min-width:0}
+  .tx .desc .nb{white-space:nowrap}
   .tx .amt{font-weight:700;text-align:right;white-space:nowrap}
   .tx .txedit{color:var(--muted);background:transparent;border:1px solid var(--line);
     border-radius:8px;padding:3px 8px;font-size:12px}
@@ -501,7 +502,7 @@ function renderPos(p,m,idx){
   else for(const e of allEntries){
     if(e._kind==="div"){
       txHtml+=`<div class="tx"><span class="tag div">Div</span>
-        <span class="desc">${fdate(e.datum)}${e.notiz?" · "+esc(e.notiz):""}</span>
+        <span class="desc"><span class="nb">${fdate(e.datum)}</span>${e.notiz?" · "+esc(e.notiz):""}</span>
         <span class="amt green">${signEur(num(e.netto)||0)}</span>
         <button class="txedit" onclick="openDiv('${p.id}','${e.id}')">✎</button></div>`;
     }else{
@@ -510,12 +511,12 @@ function renderPos(p,m,idx){
       const r=m.perTx[e.id];
       let extra="";
       if(e.typ==="verkauf"&&r){
-        const parts=r.matched.map(x=>`${numf.format(x.q)}@${feur(x.price)}`).join(" + ");
-        extra=` · FIFO: ${parts||"–"} → <b class="${cls(r.realized)}">${signEur(r.realized)}</b>`;
+        const parts=r.matched.map(x=>`<span class="nb">${numf.format(x.q)}@${feur(x.price)}</span>`).join(" + ");
+        extra=` · <span class="nb">FIFO:</span> ${parts||"–"} <span class="nb">→ <b class="${cls(r.realized)}">${signEur(r.realized)}</b></span>`;
       }
       txHtml+=`<div class="tx">
         <span class="tag ${e.typ}">${e.typ==="kauf"?"Kauf":"Verk."}</span>
-        <span class="desc">${fdate(e.datum)} · ${numf.format(st)}×${feur(ku)}${ge?` (Geb ${feur(ge)})`:""}${extra}${e.notiz?" · "+esc(e.notiz):""}</span>
+        <span class="desc"><span class="nb">${fdate(e.datum)}</span> · <span class="nb">${numf.format(st)}×${feur(ku)}</span>${ge?` <span class="nb">(Geb ${feur(ge)})</span>`:""}${extra}${e.notiz?" · "+esc(e.notiz):""}</span>
         <span class="amt ${e.typ==="kauf"?"":cls(wert)}">${e.typ==="kauf"?feur(-wert):"+"+eur.format(wert)}</span>
         <button class="txedit" onclick="openTx('${p.id}','${e.id}')">✎</button></div>`;
     }
