@@ -59,8 +59,6 @@
   .es-mark.bar{top:0;width:3px;height:20px;background:var(--txt);border-radius:2px}
   .es-mark.dot{top:2px;width:15px;height:15px;border-radius:50%;border:3px solid var(--card2)}
   .es-mark.dot.up{background:var(--green)} .es-mark.dot.down{background:var(--red)}
-  .pos .kurs-inline{display:flex;align-items:center;gap:6px;margin:8px 0 2px}
-  .pos .kurs-inline input{width:110px;padding:7px 9px}
   .pos-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:11px}
   details{margin-top:9px;border-top:1px dashed var(--line);padding-top:8px}
   summary{cursor:pointer;color:var(--muted);font-size:13px;list-style:none;user-select:none}
@@ -542,7 +540,6 @@ function renderPos(p,m,idx){
         ${openLine}
         ${m.divs?`<button class="divchip ${p.divOff?"off":""}" onclick="toggleDivOff('${p.id}')" title="Dividende in Gesamt mitzählen"><span class="cbox">${p.divOff?"":"✓"}</span> Div ${feur(m.divs)} in Gesamt</button>`:""}
       </div>
-      ${m.openQty>0?`<div class="kurs-inline"><label style="margin:0">Kurs jetzt</label><input inputmode="decimal" value="${p.kursAktuell??""}" placeholder="z.B. 152,02" onchange="setKurs('${p.id}',this.value)"></div>`:""}
       ${belowStop?`<div class="stopmsg">⚠︎ Kurs ${feur(m.kurs)} unter Stop ${feur(stopVal)}</div>`:""}
       ${m.oversell?`<div class="warnmsg">⚠︎ Es wurde mehr verkauft als (bisher) gekauft — prüfe die Stückzahlen.</div>`:""}
       <div class="pos-actions">
@@ -557,7 +554,6 @@ function renderPos(p,m,idx){
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
 
 /* ---------- Kurs schnell setzen ---------- */
-function setKurs(pid,val){const p=find(pid);if(!p)return;p.kursAktuell=val;p.fxFrom="";p.kursTime="";p.prevClose=null;touch(p);save();render();syncPushLater();}
 function toggleDivOff(pid){const p=find(pid);if(!p)return;p.divOff=!p.divOff;touch(p);save();render();syncPushLater();}
 function find(pid){return state.positions.find(p=>p.id===pid);}
 
