@@ -584,14 +584,28 @@ async function fxToEur(cur){
   return null;
 }
 // ---- Live-Kurse: Yahoo Finance über CORS-Proxy (kein Key; deckt US + Xetra/EU) ----
-// Yahoo blockt direkte Browser-Aufrufe (CORS) → über gratis Proxy. corsproxy primär, allorigins als Fallback.
+// Yahoo blockt direkte Browser-Aufrufe (CORS) → über Proxy. Gratis-Proxys sterben regelmäßig / laufen ins
+// Yahoo-Rate-Limit → mehrere als Fallback. Für DAUERHAFT stabil einen eigenen Cloudflare-Worker als ersten
+// Eintrag setzen (settings.proxy, {u}=Ziel-URL). corsproxy.io + allorigins/get sind tot (2026-07) → raus.
 const PROXIES=[
-  {mk:u=>"https://corsproxy.io/?url="+encodeURIComponent(u), wrap:false},
-  {mk:u=>"https://api.allorigins.win/get?url="+encodeURIComponent(u), wrap:true}
+  {mk:u=>"https://api.allorigins.win/raw?url="+encodeURIComponent(u), wrap:false},
+  {mk:u=>"https://api.codetabs.com/v1/proxy/?quest="+encodeURIComponent(u), wrap:false},
+  {mk:u=>"https://thingproxy.freeboard.io/fetch/"+u, wrap:false}
 ];
+// Eigener Proxy (z.B. Cloudflare-Worker) hat Vorrang, wenn in den Einstellungen hinterlegt.
+// Tolerant: akzeptiert "…/?url={u}", "…/?url=" oder nur die Worker-Basis-URL.
+function proxyChain(){
+  const raw=((state.settings&&state.settings.proxy)||"").trim();
+  if(!raw) return PROXIES;
+  let mk;
+  if(raw.includes("{u}"))         mk=u=>raw.replace("{u}",encodeURIComponent(u));
+  else if(/[?&]url=$/.test(raw))  mk=u=>raw+encodeURIComponent(u);
+  else                            mk=u=>raw+(raw.includes("?")?"&":"?")+"url="+encodeURIComponent(u);
+  return [{mk,wrap:false}, ...PROXIES];
+}
 async function proxyJSON(url){
   let last="";
-  for(const p of PROXIES){
+  for(const p of proxyChain()){
     try{
       const r=await fetch(p.mk(url),{cache:"no-store"});
       if(!r.ok){ last="HTTP "+r.status; continue; }
@@ -962,6 +976,12 @@ function openBackup(){
         Auto-Kurse: ${state.settings.autoRefresh?"An":"Aus"}</button>
       <div class="hint" style="margin:0;flex:1">Kurse beim Start automatisch laden (leise, mit Kurz-Sperre gegen Neulade-Spam).</div>
     </div>
+    <div class="field" style="margin-bottom:14px">
+      <label>Eigener Kurs-Proxy (empfohlen)</label>
+      <input id="f_proxy" value="${esc(state.settings.proxy||"")}" placeholder="https://…workers.dev/?url=" autocomplete="off">
+      <div class="hint" style="margin:6px 0 0">Eigener Cloudflare-Worker → stabile Kurse ohne Rate-Limit. Leer = kostenlose Gemeinschafts-Proxys (fallen zeitweise aus). Pro Gerät einmal eintragen.</div>
+      <div class="sheet-actions" style="margin-top:8px"><button class="btn sec" style="flex:1" onclick="saveProxy()">Proxy speichern</button></div>
+    </div>
     <div style="border-top:1px solid var(--line);margin:4px 0 14px;padding-top:14px">
       <div class="row" style="margin-bottom:8px"><b>Sync über GitHub</b><div class="spacer"></div>
         <button class="btn ${state.settings.autoSync?"":"sec"} sm" onclick="toggleAutoSync()">Auto: ${state.settings.autoSync?"An":"Aus"}</button></div>
@@ -992,6 +1012,7 @@ function openBackup(){
     </div>`);
 }
 function toggleAuto(){state.settings.autoRefresh=!state.settings.autoRefresh;save();startPriceTimer();openBackup();render();}
+function saveProxy(){state.settings.proxy=val("f_proxy").trim();save();toast(state.settings.proxy?"✓ Proxy gespeichert":"Proxy geleert – Gemeinschafts-Proxys");openBackup();}
 function toggleAutoSync(){state.settings.autoSync=!state.settings.autoSync;save();openBackup();}
 function saveGh(){
   state.settings.gh={token:val("f_ghtoken").trim(),repo:val("f_ghrepo").trim(),
