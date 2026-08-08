@@ -1,2 +1,7 @@
 import_depot.json
 .DS_Store
+# Echte Finanzdaten / lokale Analyse — NIE ins öffentliche Repo
+investing-context/
+*.csv
+trading_*.json
+neu.json
