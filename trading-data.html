@@ -252,11 +252,12 @@ function compute(pos){
   const tx=(pos.tx||[]).map((t,i)=>({...t,_i:i}))
     .sort((a,b)=> (a.datum<b.datum?-1:a.datum>b.datum?1:a._i-b._i));
   const lots=[];            // FIFO-Schlange offener Käufe
-  let realized=0, oversell=false, buyCostAll=0;
+  let realized=0, oversell=false, buyCostAll=0, steuerSum=0;
   const perTx={};           // Ergebnis je Verkauf (fürs Anzeigen der Paarung)
   for(const t of tx){
     const st=num(t.stueck), ku=num(t.kurs), ge=num(t.gebuehr)||0;
     if(!(st>0)||isNaN(ku))continue;
+    steuerSum+=num(t.steuer)||0;   // Steuer wird gesammelt, aber nur auf Wunsch verrechnet (s.u.)
     if(t.typ==="kauf"){
       lots.push({q:st, price:ku, fps:ge/st});      // Gebühr pro Stück
       buyCostAll+=st*ku+ge;
@@ -274,9 +275,13 @@ function compute(pos){
       }
       if(toSell>1e-9)oversell=true;   // mehr verkauft als gehalten
       realized+=r;
-      perTx[t.id]={realized:r, matched};
+      perTx[t.id]={realized:r, matched, steuer:num(t.steuer)||0};
     }
   }
+  // Steuer: standardmäßig NICHT eingerechnet (Kursbetrachtung vor Steuer).
+  // Per Chip an der Position zuschaltbar — dann mindert sie Realisiert, Gesamt und hebt den Break-even.
+  const steuerCounted=!!pos.steuerOn;
+  if(steuerCounted) realized-=steuerSum;
   const openQty=lots.reduce((s,l)=>s+l.q,0);
   const openCost=lots.reduce((s,l)=>s+l.q*(l.price+l.fps),0);
   const avg=openQty>0?openCost/openQty:0;
@@ -305,7 +310,7 @@ function compute(pos){
   const bePct=(!isNaN(beDelta)&&erstEinstieg)?beDelta/erstEinstieg*100:NaN;
   return {tx,realized,openQty,openCost,avg,curVal,unreal,divs,gesamt,hasKurs,
     oversell,buyCostAll,gesamtPct,unrealPct,jahr,first,last,closed,days,perTx,kurs,
-    erstEinstieg,breakEven,beDelta,bePct};
+    erstEinstieg,breakEven,beDelta,bePct,steuer:steuerSum,steuerCounted};
 }
 
 /* ---------- Render ---------- */
@@ -539,6 +544,7 @@ function renderPos(p,m,idx){
       <div class="meta">
         ${openLine}
         ${m.divs?`<button class="divchip ${p.divOff?"off":""}" onclick="toggleDivOff('${p.id}')" title="Dividende in Gesamt mitzählen"><span class="cbox">${p.divOff?"":"✓"}</span> Div ${feur(m.divs)} in Gesamt</button>`:""}
+        ${m.steuer?`<button class="divchip ${p.steuerOn?"":"off"}" onclick="toggleSteuer('${p.id}')" title="Steuer in Gesamt und Break-even einrechnen"><span class="cbox">${p.steuerOn?"✓":""}</span> Steuer ${feur(m.steuer)} in Gesamt</button>`:""}
       </div>
       ${belowStop?`<div class="stopmsg">⚠︎ Kurs ${feur(m.kurs)} unter Stop ${feur(stopVal)}</div>`:""}
       ${m.oversell?`<div class="warnmsg">⚠︎ Es wurde mehr verkauft als (bisher) gekauft — prüfe die Stückzahlen.</div>`:""}
@@ -555,6 +561,7 @@ function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;","
 
 /* ---------- Kurs schnell setzen ---------- */
 function toggleDivOff(pid){const p=find(pid);if(!p)return;p.divOff=!p.divOff;touch(p);save();render();syncPushLater();}
+function toggleSteuer(pid){const p=find(pid);if(!p)return;p.steuerOn=!p.steuerOn;touch(p);save();render();syncPushLater();}
 function find(pid){return state.positions.find(p=>p.id===pid);}
 
 /* ---------- Live-Kurse (Twelve Data, CORS-offen, Gratis-Key) ---------- */
@@ -899,6 +906,10 @@ function openTx(pid,tid){
       <div class="field"><label>Kurs</label><input id="f_kurs" inputmode="decimal" value="${t?esc(t.kurs):""}" placeholder="z.B. 3,63"></div>
       <div class="field"><label>Gebühr (€)</label><input id="f_geb" inputmode="decimal" value="${t?esc(t.gebuehr??""):""}" placeholder="0"></div>
     </div>
+    <div class="two">
+      <div class="field"><label>Steuer (€)</label><input id="f_steuer" inputmode="decimal" value="${t?esc(t.steuer??""):""}" placeholder="0"></div>
+      <div class="field" style="align-self:end"><div class="hint" style="margin:0 0 9px">Zählt erst, wenn am Chip aktiviert.</div></div>
+    </div>
     <div class="field"><label>Notiz (optional)</label><input id="f_txnotiz" value="${t?esc(t.notiz||""):""}"></div>
     <div class="hint">Verkäufe werden automatisch den ältesten Käufen zugeordnet (FIFO) — du musst nichts paaren.${t?"":" Nach dem Speichern bleibt das Fenster offen für die nächste Buchung."}</div>
     <div class="sheet-actions">
@@ -921,7 +932,7 @@ function saveTx(pid,tid){
   if(!t){t={id:uid()};p.tx=p.tx||[];p.tx.push(t);}
   t.typ=txTyp;t.datum=val("f_datum")||today();
   t.stueck=val("f_stueck").trim();t.kurs=val("f_kurs").trim();
-  t.gebuehr=val("f_geb").trim();t.notiz=val("f_txnotiz").trim();
+  t.gebuehr=val("f_geb").trim();t.steuer=val("f_steuer").trim();t.notiz=val("f_txnotiz").trim();
   touch(t);
   save();syncPushLater();
   if(tid){closeSheet();render();return;}          // Bearbeiten: schließen
