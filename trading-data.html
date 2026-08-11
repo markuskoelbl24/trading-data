@@ -1012,6 +1012,12 @@ function openBackup(){
       </div>
       <div class="hint" style="margin-top:8px">${state.settings.syncedAt?"Zuletzt: "+new Date(state.settings.syncedAt).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})+" Uhr":"Noch nie synchronisiert."}</div>
     </div>
+    <div class="field" style="margin-bottom:12px">
+      <label>Trades importieren (Trade Republic CSV)</label>
+      <div class="sheet-actions" style="margin-top:4px"><button class="btn sec" style="flex:1" onclick="document.getElementById('tdcsv').click()">⤒ CSV wählen</button></div>
+      <input type="file" id="tdcsv" accept=".csv,text/csv" style="display:none" onchange="tdCsvPick(this)">
+      <div class="hint" style="margin:6px 0 0">TR-App → Export → CSV. Neue Trades werden ergänzt, Steuer nachgetragen (per transaction_id, keine Dubletten). Vorschau vor dem Übernehmen.</div>
+    </div>
     <div class="sheet-actions" style="margin-bottom:10px">
       <button class="btn" onclick="exportJson()">⤓ Export (.json)</button>
       <button class="btn sec" onclick="document.getElementById('imp').click()">⤒ Import</button>
@@ -1068,6 +1074,111 @@ function loadDemo(){
   }]};
   save();closeSheet();render();
 }
+
+/* ---------- Trade-Republic-CSV-Import (Buchungen ergänzen, Steuer/trid nachtragen) ---------- */
+let tdPlan=null;
+function tdCsvNum(s){ s=String(s==null?"":s).trim().replace(/\s/g,"");
+  if(!s)return null;
+  if(s.indexOf(",")>=0 && s.indexOf(".")>=0) s=s.replace(/\./g,"").replace(",",".");
+  else if(s.indexOf(",")>=0) s=s.replace(",",".");
+  const n=parseFloat(s); return isNaN(n)?null:n; }
+function tdFmt(x){ if(x==null)return ""; let s=(+x).toFixed(10).replace(/0+$/,"").replace(/\.$/,""); return s||"0"; }
+function tdNorm(x){ return String(x||"").normalize("NFKD").replace(/[̀-ͯ]/g,"").toLowerCase().replace(/[^a-z0-9]/g,""); }
+function tdParseCSV(text){
+  const rows=[]; let field="",row=[],q=false;
+  for(let i=0;i<text.length;i++){ const c=text[i];
+    if(q){ if(c==='"'){ if(text[i+1]==='"'){field+='"';i++;} else q=false; } else field+=c; }
+    else { if(c==='"')q=true; else if(c===','){row.push(field);field="";} else if(c==='\r'){} else if(c==='\n'){row.push(field);rows.push(row);row=[];field="";} else field+=c; } }
+  if(field.length||row.length){row.push(field);rows.push(row);}
+  if(!rows.length)return[];
+  const head=rows[0].map(h=>h.trim());
+  return rows.slice(1).filter(r=>r.length>1).map(r=>{const o={};head.forEach((h,k)=>o[h]=(r[k]==null?"":r[k]));return o;}); }
+function tdClassify(r){
+  const hay=[(r.category||""),(r.type||""),(r.description||"")].join(" ").toUpperCase();
+  const shares=tdCsvNum(r.shares), price=tdCsvNum(r.price), amount=tdCsvNum(r.amount);
+  if(/DIVIDEND|DISTRIBUTION|AUSSCHUE?TT/.test(hay)) return amount?"dividende":null;
+  if(shares&&price){
+    if(amount==null){ if(/SELL|VERKAUF/.test(hay))return"verkauf"; if(/BUY|KAUF|SAVING/.test(hay))return"kauf"; return null; }
+    return amount<0?"kauf":"verkauf"; }
+  return null; }
+function tdBuildPlan(text){
+  const rows=tdParseCSV(text);
+  const seen=new Set(); let maxDate="";
+  for(const p of state.positions) for(const it of (p.tx||[]).concat(p.div||[])){ if(it.trid)seen.add(it.trid); const d=(it.datum||"").slice(0,10); if(d>maxDate)maxDate=d; }
+  const byName={}; for(const p of state.positions){ const k=tdNorm(p.titel); if(k)byName[k]=p.symbol; }
+  const isinMap=state.settings.isinMap||{};
+  const cand=[]; const unknown={}; let skipped=0, noWP=0;
+  for(const r of rows){
+    const kind=tdClassify(r); if(!kind){noWP++;continue;}
+    const trid=(r.transaction_id||"").trim();
+    if(trid && seen.has(trid)){skipped++;continue;}
+    const isin=(r.symbol||"").trim(), name=(r.name||"").trim(), dt=(r.date||"").slice(0,10);
+    const ticker = isinMap[isin] || byName[tdNorm(name)] || "";
+    if(!ticker){ if(!unknown[isin])unknown[isin]={name,count:0,last:""}; unknown[isin].count++; if(dt>unknown[isin].last)unknown[isin].last=dt; }
+    cand.push({ isin, name, kind, trid, ticker, datum:dt,
+      stueck:Math.abs(tdCsvNum(r.shares)||0), kurs:Math.abs(tdCsvNum(r.price)||0),
+      fee:Math.abs(tdCsvNum(r.fee)||0), tax:Math.abs(tdCsvNum(r.tax)||0), amount:Math.abs(tdCsvNum(r.amount)||0) }); }
+  return {cand, unknown, skipped, noWP, total:rows.length, maxDate}; }
+// Kern: einmal simulieren (mutate=false → Vorschau auf Klon) bzw. anwenden (mutate=true → echter Zustand)
+function tdSimulate(assign, mutate){
+  const positions = mutate ? state.positions : JSON.parse(JSON.stringify(state.positions));
+  const isinMap = Object.assign({}, state.settings.isinMap||{}, assign||{});
+  const byName={}, byTicker={}; for(const p of positions){ const k=tdNorm(p.titel); if(k)byName[k]=p; if(p.symbol)byTicker[p.symbol.toUpperCase()]=p; }
+  const seen=new Set(), posMaxDate={}; for(const p of positions){ let mx=""; for(const it of (p.tx||[]).concat(p.div||[])){ if(it.trid)seen.add(it.trid); const d=(it.datum||"").slice(0,10); if(d>mx)mx=d; } posMaxDate[p.id]=mx; }
+  const isNew={}, used={}, now=Date.now();
+  let backfill=0, added=0, skippedSeen=0, skippedBaseline=0, newPos=0, unresolved=0;
+  for(const c of tdPlan.cand){
+    let ticker = c.ticker || isinMap[c.isin] || (byName[tdNorm(c.name)]?byName[tdNorm(c.name)].symbol:"") || "";
+    if(!ticker){ unresolved++; continue; }
+    ticker=String(ticker).toUpperCase();
+    if(c.trid && seen.has(c.trid)){ skippedSeen++; continue; }
+    let p=byTicker[ticker];
+    if(!p){ p={id:uid(),titel:c.name||ticker,symbol:ticker,branche:"",stop:"",kursAktuell:"",notiz:"",tx:[],div:[],_u:now}; positions.push(p); byTicker[ticker]=p; isNew[p.id]=true; posMaxDate[p.id]=""; newPos++; }
+    if(!used[p.id])used[p.id]=new Set();
+    if(c.kind==="dividende"){
+      const m=(p.div||[]).find(d=>!used[p.id].has(d.id)&&!d.trid&&(d.datum||"").slice(0,10)===c.datum&&Math.abs((num(d.netto)||0)-c.amount)<0.02);
+      if(m){ m.trid=c.trid; if(mutate)touch(m); used[p.id].add(m.id); backfill++; }
+      else if(isNew[p.id]||c.datum>(posMaxDate[p.id]||"")){ const d={id:uid(),datum:c.datum,netto:tdFmt(c.amount),notiz:"TR-Import",trid:c.trid,_u:now}; (p.div||(p.div=[])).push(d); used[p.id].add(d.id); added++; }
+      else skippedBaseline++;
+    } else {
+      const m=(p.tx||[]).find(t=>!used[p.id].has(t.id)&&!t.trid&&t.typ===c.kind&&(t.datum||"").slice(0,10)===c.datum&&Math.abs((num(t.stueck)||0)-c.stueck)<0.001&&Math.abs((num(t.kurs)||0)-c.kurs)<Math.max(0.02,c.kurs*0.01));
+      if(m){ if(c.tax)m.steuer=tdFmt(c.tax); if(c.fee&&!(num(m.gebuehr)>0))m.gebuehr=tdFmt(c.fee); m.trid=c.trid; if(mutate)touch(m); used[p.id].add(m.id); backfill++; }
+      else if(isNew[p.id]||c.datum>(posMaxDate[p.id]||"")){ const t={id:uid(),typ:c.kind,datum:c.datum,stueck:tdFmt(c.stueck),kurs:tdFmt(c.kurs),gebuehr:c.fee?tdFmt(c.fee):"",steuer:c.tax?tdFmt(c.tax):"",notiz:"TR-Import",trid:c.trid,_u:now}; (p.tx||(p.tx=[])).push(t); used[p.id].add(t.id); added++; }
+      else skippedBaseline++;
+    }
+    if(c.trid)seen.add(c.trid);
+  }
+  return {backfill, added, skippedSeen, skippedBaseline, newPos, unresolved}; }
+function tdCsvPick(inp){ const f=inp.files[0]; if(!f)return; inp.value="";
+  const rd=new FileReader();
+  rd.onload=()=>{ try{ tdPlan=tdBuildPlan(rd.result); tdShowPreview(); }catch(e){ alert("CSV nicht lesbar: "+(e.message||e)); } };
+  rd.readAsText(f); }
+function tdShowPreview(){
+  const sim=tdSimulate({}, false);
+  const all=Object.entries(tdPlan.unknown);
+  const recent=all.filter(e=>(e[1].last||"")>tdPlan.maxDate).sort((a,b)=>(b[1].last||"").localeCompare(a[1].last||""));
+  const oldCount=all.length-recent.length;
+  let h=`<h2>Trades importieren</h2>
+    <div class="hint" style="margin-bottom:10px">CSV: ${tdPlan.total} Zeilen. Vorschau (ohne Zuordnung unten):<br>
+    · <b>${sim.backfill}</b> Bestandsbuchung(en) bekommen Steuer/ID nachgetragen<br>
+    · <b>${sim.added}</b> neue Buchung(en)${tdPlan.skipped?"<br>· "+tdPlan.skipped+" schon vorhanden":""}${sim.skippedBaseline?"<br>· "+sim.skippedBaseline+" alte Zeilen übersprungen (nicht im gepflegten Bestand)":""}</div>`;
+  if(recent.length){
+    h+=`<div class="hint" style="margin:0 0 6px"><b>${recent.length} neue(r) Wert(e)</b> seit deinem letzten Stand — Yahoo-Ticker eintragen zum Aufnehmen (leer = überspringen):</div>`;
+    for(const [isin,info] of recent)
+      h+=`<div class="two" style="align-items:flex-end;margin-bottom:6px;gap:8px">
+        <div class="field" style="flex:2;margin:0"><label style="opacity:.85">${esc(info.name||isin)} <span style="opacity:.5">${info.last}, ${info.count}×</span></label></div>
+        <div class="field" style="flex:1;margin:0"><input id="tdmap_${tdNorm(isin)}" placeholder="Ticker / leer" autocomplete="off"></div></div>`;
+  }
+  if(oldCount)h+=`<div class="hint" style="margin:0 0 8px">${oldCount} alte/verkaufte Werte werden übersprungen.</div>`;
+  h+=`<div class="hint" style="margin:8px 0">Dedup über transaction_id — mehrfacher Import fügt nichts doppelt ein.</div>
+    <div class="sheet-actions"><button class="btn sec" style="flex:1" onclick="tdPlan=null;closeSheet();">Abbrechen</button><button class="btn" style="flex:1" onclick="tdApplyPlan()">Importieren</button></div>`;
+  openSheet(h); }
+function tdApplyPlan(){ if(!tdPlan)return;
+  const assign={}; for(const isin in tdPlan.unknown){ const v=(val("tdmap_"+tdNorm(isin))||"").trim(); if(v)assign[isin]=v.toUpperCase(); }
+  state.settings.isinMap=Object.assign({}, state.settings.isinMap||{}, assign);
+  const r=tdSimulate(assign, true);
+  save(); render(); syncPushLater(); tdPlan=null; closeSheet();
+  toast("✓ "+r.backfill+" nachgetragen · "+r.added+" neu"+(r.skippedBaseline?" · "+r.skippedBaseline+" übersprungen":"")); }
 
 /* ---------- Helper ---------- */
 function val(id){const e=document.getElementById(id);return e?e.value:"";}
