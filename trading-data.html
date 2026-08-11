@@ -1171,6 +1171,7 @@ function tdShowPreview(){
     · <b>${sim.newPos}</b> neue Position(en) · <b>${sim.added}</b> neue Buchung(en)${tdPlan.skipped?"<br>· "+tdPlan.skipped+" schon vorhanden":""}${closed?"<br>· "+closed+" verkaufte/alte Werte übersprungen":""}</div>`;
   if(held.length){
     h+=`<div class="hint" style="margin:0 0 6px"><b>${held.length} gehaltene neue Werte</b> werden aufgenommen. Yahoo-Ticker optional (für Live-Kurse) — leer = Position ohne Kurs, Käufe/Verkäufe trotzdem drin:</div>`;
+    h+=`<div class="hint" id="tdSuggestStat" style="margin:0 0 8px">🔍 suche Ticker-Vorschläge…</div>`;
     for(const u of held)
       h+=`<div class="two" style="align-items:flex-end;margin-bottom:6px;gap:8px">
         <div class="field" style="flex:2;margin:0"><label style="opacity:.85">${esc(u.name||u.isin)} <span style="opacity:.5">${u.count}×</span></label></div>
@@ -1178,7 +1179,27 @@ function tdShowPreview(){
   }
   h+=`<div class="hint" style="margin:8px 0">Dedup über transaction_id — mehrfacher Import fügt nichts doppelt ein.</div>
     <div class="sheet-actions"><button class="btn sec" style="flex:1" onclick="tdPlan=null;closeSheet();">Abbrechen</button><button class="btn" style="flex:1" onclick="tdApplyPlan()">Importieren</button></div>`;
-  openSheet(h); }
+  openSheet(h); if(held.length)setTimeout(tdSuggestTickers,60); }
+// Auto-Vorschlag: Yahoo-Suche je ISIN füllt die leeren Ticker-Felder vor (gedrosselt, best-effort)
+async function tdSuggestTickers(){
+  const held=Object.values(tdPlan.unknown).filter(u=>u.held);
+  const stat=document.getElementById("tdSuggestStat");
+  const rank={EQUITY:0,ETF:1,MUTUALFUND:2};
+  let done=0, filled=0;
+  const one=async(u)=>{
+    try{
+      const b=await proxyJSON("https://query1.finance.yahoo.com/v1/finance/search?q="+encodeURIComponent(u.isin)+"&quotesCount=8&newsCount=0");
+      const qs=((b&&b.quotes)||[]).filter(q=>q.symbol&&(rank[q.quoteType]!=null));
+      qs.sort((a,c)=>(rank[a.quoteType]??9)-(rank[c.quoteType]??9));
+      const pick=qs.length?qs[0].symbol:"";
+      if(pick){ const el=document.getElementById("tdmap_"+tdNorm(u.isin)); if(el&&!el.value){ el.value=pick; filled++; } }
+    }catch(e){}
+    done++; if(stat)stat.textContent="🔍 Vorschläge: "+done+"/"+held.length+" (befüllt: "+filled+")";
+  };
+  const CH=4;
+  for(let i=0;i<held.length;i+=CH){ await Promise.all(held.slice(i,i+CH).map(one)); await sleep(150); }
+  if(stat)stat.textContent="🔍 "+filled+"/"+held.length+" vorgeschlagen — bitte prüfen. Hebel/KO haben keinen Ticker (leer lassen), ETFs oft London-Listing (.L).";
+}
 function tdApplyPlan(){ if(!tdPlan)return;
   const assign={}; for(const isin in tdPlan.unknown){ const v=(val("tdmap_"+tdNorm(isin))||"").trim(); if(v)assign[isin]=v.toUpperCase(); }
   state.settings.isinMap=Object.assign({}, state.settings.isinMap||{}, assign);
