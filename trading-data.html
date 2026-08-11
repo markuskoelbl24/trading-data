@@ -1105,17 +1105,20 @@ function tdBuildPlan(text){
   const rows=tdParseCSV(text);
   const seen=new Set(); let maxDate="";
   for(const p of state.positions) for(const it of (p.tx||[]).concat(p.div||[])){ if(it.trid)seen.add(it.trid); const d=(it.datum||"").slice(0,10); if(d>maxDate)maxDate=d; }
-  const byName={}; for(const p of state.positions){ const k=tdNorm(p.titel); if(k)byName[k]=p.symbol; }
+  const knownIsin=new Set(), knownName=new Set();
+  for(const p of state.positions){ if(p.isin)knownIsin.add(p.isin); const k=tdNorm(p.titel); if(k)knownName.add(k); }
   const isinMap=state.settings.isinMap||{};
+  // Netto-Stück je ISIN (Kauf +, Verkauf − stehen so in der CSV) → noch gehalten?
+  const net={}; for(const r of rows){ const isin=(r.symbol||"").trim(); if(isin)net[isin]=(net[isin]||0)+(tdCsvNum(r.shares)||0); }
   const cand=[]; const unknown={}; let skipped=0, noWP=0;
   for(const r of rows){
     const kind=tdClassify(r); if(!kind){noWP++;continue;}
     const trid=(r.transaction_id||"").trim();
     if(trid && seen.has(trid)){skipped++;continue;}
     const isin=(r.symbol||"").trim(), name=(r.name||"").trim(), dt=(r.date||"").slice(0,10);
-    const ticker = isinMap[isin] || byName[tdNorm(name)] || "";
-    if(!ticker){ if(!unknown[isin])unknown[isin]={name,count:0,last:""}; unknown[isin].count++; if(dt>unknown[isin].last)unknown[isin].last=dt; }
-    cand.push({ isin, name, kind, trid, ticker, datum:dt,
+    const isKnown = knownIsin.has(isin) || knownName.has(tdNorm(name)) || !!isinMap[isin];
+    if(!isKnown){ if(!unknown[isin])unknown[isin]={isin,name,count:0,last:"",held:(net[isin]||0)>0.0001}; unknown[isin].count++; if(dt>unknown[isin].last)unknown[isin].last=dt; }
+    cand.push({ isin, name, kind, trid, datum:dt,
       stueck:Math.abs(tdCsvNum(r.shares)||0), kurs:Math.abs(tdCsvNum(r.price)||0),
       fee:Math.abs(tdCsvNum(r.fee)||0), tax:Math.abs(tdCsvNum(r.tax)||0), amount:Math.abs(tdCsvNum(r.amount)||0) }); }
   return {cand, unknown, skipped, noWP, total:rows.length, maxDate}; }
@@ -1123,17 +1126,21 @@ function tdBuildPlan(text){
 function tdSimulate(assign, mutate){
   const positions = mutate ? state.positions : JSON.parse(JSON.stringify(state.positions));
   const isinMap = Object.assign({}, state.settings.isinMap||{}, assign||{});
-  const byName={}, byTicker={}; for(const p of positions){ const k=tdNorm(p.titel); if(k)byName[k]=p; if(p.symbol)byTicker[p.symbol.toUpperCase()]=p; }
+  const byName={}, byTicker={}, byIsin={};
+  for(const p of positions){ const k=tdNorm(p.titel); if(k)byName[k]=p; if(p.symbol)byTicker[p.symbol.toUpperCase()]=p; if(p.isin)byIsin[p.isin]=p; }
   const seen=new Set(), posMaxDate={}; for(const p of positions){ let mx=""; for(const it of (p.tx||[]).concat(p.div||[])){ if(it.trid)seen.add(it.trid); const d=(it.datum||"").slice(0,10); if(d>mx)mx=d; } posMaxDate[p.id]=mx; }
   const isNew={}, used={}, now=Date.now();
   let backfill=0, added=0, skippedSeen=0, skippedBaseline=0, newPos=0, unresolved=0;
   for(const c of tdPlan.cand){
-    let ticker = c.ticker || isinMap[c.isin] || (byName[tdNorm(c.name)]?byName[tdNorm(c.name)].symbol:"") || "";
-    if(!ticker){ unresolved++; continue; }
-    ticker=String(ticker).toUpperCase();
     if(c.trid && seen.has(c.trid)){ skippedSeen++; continue; }
-    let p=byTicker[ticker];
-    if(!p){ p={id:uid(),titel:c.name||ticker,symbol:ticker,branche:"",stop:"",kursAktuell:"",notiz:"",tx:[],div:[],_u:now}; positions.push(p); byTicker[ticker]=p; isNew[p.id]=true; posMaxDate[p.id]=""; newPos++; }
+    const ticker = String(isinMap[c.isin] || (byName[tdNorm(c.name)]?byName[tdNorm(c.name)].symbol:"") || "").toUpperCase();
+    let p = byIsin[c.isin] || (ticker?byTicker[ticker]:null) || byName[tdNorm(c.name)];
+    if(!p){
+      const held = tdPlan.unknown[c.isin] && tdPlan.unknown[c.isin].held;
+      if(!held && !ticker){ unresolved++; continue; }              // verkauft/alt + kein Ticker → überspringen
+      p={id:uid(),titel:c.name||ticker||c.isin,symbol:ticker,isin:c.isin,branche:"",stop:"",kursAktuell:"",notiz:"",tx:[],div:[],_u:now};
+      positions.push(p); byIsin[c.isin]=p; if(ticker)byTicker[ticker]=p; isNew[p.id]=true; posMaxDate[p.id]=""; newPos++;
+    } else { if(!p.isin){ p.isin=c.isin; if(mutate)touch(p); } if(ticker && !p.symbol){ p.symbol=ticker; if(mutate)touch(p); } }
     if(!used[p.id])used[p.id]=new Set();
     if(c.kind==="dividende"){
       const m=(p.div||[]).find(d=>!used[p.id].has(d.id)&&!d.trid&&(d.datum||"").slice(0,10)===c.datum&&Math.abs((num(d.netto)||0)-c.amount)<0.02);
@@ -1155,21 +1162,20 @@ function tdCsvPick(inp){ const f=inp.files[0]; if(!f)return; inp.value="";
   rd.readAsText(f); }
 function tdShowPreview(){
   const sim=tdSimulate({}, false);
-  const all=Object.entries(tdPlan.unknown);
-  const recent=all.filter(e=>(e[1].last||"")>tdPlan.maxDate).sort((a,b)=>(b[1].last||"").localeCompare(a[1].last||""));
-  const oldCount=all.length-recent.length;
+  const all=Object.values(tdPlan.unknown);
+  const held=all.filter(u=>u.held).sort((a,b)=>(b.last||"").localeCompare(a.last||""));
+  const closed=all.length-held.length;
   let h=`<h2>Trades importieren</h2>
-    <div class="hint" style="margin-bottom:10px">CSV: ${tdPlan.total} Zeilen. Vorschau (ohne Zuordnung unten):<br>
-    · <b>${sim.backfill}</b> Bestandsbuchung(en) bekommen Steuer/ID nachgetragen<br>
-    · <b>${sim.added}</b> neue Buchung(en)${tdPlan.skipped?"<br>· "+tdPlan.skipped+" schon vorhanden":""}${sim.skippedBaseline?"<br>· "+sim.skippedBaseline+" alte Zeilen übersprungen (nicht im gepflegten Bestand)":""}</div>`;
-  if(recent.length){
-    h+=`<div class="hint" style="margin:0 0 6px"><b>${recent.length} neue(r) Wert(e)</b> seit deinem letzten Stand — Yahoo-Ticker eintragen zum Aufnehmen (leer = überspringen):</div>`;
-    for(const [isin,info] of recent)
+    <div class="hint" style="margin-bottom:10px">CSV: ${tdPlan.total} Zeilen. Vorschau:<br>
+    · <b>${sim.backfill}</b> Bestandsbuchung(en) bekommen Steuer/ID<br>
+    · <b>${sim.newPos}</b> neue Position(en) · <b>${sim.added}</b> neue Buchung(en)${tdPlan.skipped?"<br>· "+tdPlan.skipped+" schon vorhanden":""}${closed?"<br>· "+closed+" verkaufte/alte Werte übersprungen":""}</div>`;
+  if(held.length){
+    h+=`<div class="hint" style="margin:0 0 6px"><b>${held.length} gehaltene neue Werte</b> werden aufgenommen. Yahoo-Ticker optional (für Live-Kurse) — leer = Position ohne Kurs, Käufe/Verkäufe trotzdem drin:</div>`;
+    for(const u of held)
       h+=`<div class="two" style="align-items:flex-end;margin-bottom:6px;gap:8px">
-        <div class="field" style="flex:2;margin:0"><label style="opacity:.85">${esc(info.name||isin)} <span style="opacity:.5">${info.last}, ${info.count}×</span></label></div>
-        <div class="field" style="flex:1;margin:0"><input id="tdmap_${tdNorm(isin)}" placeholder="Ticker / leer" autocomplete="off"></div></div>`;
+        <div class="field" style="flex:2;margin:0"><label style="opacity:.85">${esc(u.name||u.isin)} <span style="opacity:.5">${u.count}×</span></label></div>
+        <div class="field" style="flex:1;margin:0"><input id="tdmap_${tdNorm(u.isin)}" placeholder="Ticker / leer" autocomplete="off"></div></div>`;
   }
-  if(oldCount)h+=`<div class="hint" style="margin:0 0 8px">${oldCount} alte/verkaufte Werte werden übersprungen.</div>`;
   h+=`<div class="hint" style="margin:8px 0">Dedup über transaction_id — mehrfacher Import fügt nichts doppelt ein.</div>
     <div class="sheet-actions"><button class="btn sec" style="flex:1" onclick="tdPlan=null;closeSheet();">Abbrechen</button><button class="btn" style="flex:1" onclick="tdApplyPlan()">Importieren</button></div>`;
   openSheet(h); }
