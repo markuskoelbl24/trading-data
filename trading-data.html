@@ -1096,6 +1096,10 @@ function tdParseCSV(text){
 function tdClassify(r){
   const hay=[(r.category||""),(r.type||""),(r.description||"")].join(" ").toUpperCase();
   const shares=tdCsvNum(r.shares), price=tdCsvNum(r.price), amount=tdCsvNum(r.amount);
+  // Kapitalmaßnahme (Split, Spin-off, Bonus, Storno): Stückzahl-Änderung OHNE Preis → als Kauf/Verkauf @0,
+  // sonst fehlen die Stücke und die Position zeigt eine falsche Anzahl.
+  if(shares && !price && /SPLIT|SPIN.?OFF|BONUS|STOCK.?DIVIDEND|MERGER|CAPITAL_INCREASE|WORTHLESS|TILG/.test(hay))
+    return shares>0?"kauf":"verkauf";
   if(/DIVIDEND|DISTRIBUTION|AUSSCHUE?TT/.test(hay)) return amount?"dividende":null;
   if(shares&&price){
     if(amount==null){ if(/SELL|VERKAUF/.test(hay))return"verkauf"; if(/BUY|KAUF|SAVING/.test(hay))return"kauf"; return null; }
