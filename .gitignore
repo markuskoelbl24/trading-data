@@ -1,6 +1,8 @@
 import_depot.json
 .DS_Store
 # Echte Finanzdaten / lokale Analyse — NIE ins öffentliche Repo
+# Inhalte liegen jetzt im privaten Repo markuskoelbl24/investing-context;
+# der Eintrag bleibt als Netz, falls lokal noch ein Ordner existiert.
 investing-context/
 *.csv
 trading_*.json
