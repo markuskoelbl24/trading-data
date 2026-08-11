@@ -1113,7 +1113,7 @@ function tdBuildPlan(text){
   for(const p of state.positions){ if(p.isin)knownIsin.add(p.isin); const k=tdNorm(p.titel); if(k)knownName.add(k); }
   const isinMap=state.settings.isinMap||{};
   // Netto-Stück je ISIN (Kauf +, Verkauf − stehen so in der CSV) → noch gehalten?
-  const net={}; for(const r of rows){ const isin=(r.symbol||"").trim(); if(isin)net[isin]=(net[isin]||0)+(tdCsvNum(r.shares)||0); }
+  const net={}; for(const r of rows){ const isin=(r.symbol||"").trim(); if(!isin)continue; const k=tdClassify(r); if(k==="kauf"||k==="verkauf")net[isin]=(net[isin]||0)+(tdCsvNum(r.shares)||0); }
   const cand=[]; const unknown={}; let skipped=0, noWP=0;
   for(const r of rows){
     const kind=tdClassify(r); if(!kind){noWP++;continue;}
