@@ -595,36 +595,52 @@ async function fxToEur(cur){
 // Yahoo-Rate-Limit → mehrere als Fallback. Für DAUERHAFT stabil einen eigenen Cloudflare-Worker als ersten
 // Eintrag setzen (settings.proxy, {u}=Ziel-URL). corsproxy.io + allorigins/get sind tot (2026-07) → raus.
 const PROXIES=[
-  {mk:u=>"https://api.allorigins.win/raw?url="+encodeURIComponent(u), wrap:false},
-  {mk:u=>"https://api.codetabs.com/v1/proxy/?quest="+encodeURIComponent(u), wrap:false},
-  {mk:u=>"https://thingproxy.freeboard.io/fetch/"+u, wrap:false}
+  {name:"allorigins",  mk:u=>"https://api.allorigins.win/raw?url="+encodeURIComponent(u), wrap:false},
+  {name:"codetabs",    mk:u=>"https://api.codetabs.com/v1/proxy/?quest="+encodeURIComponent(u), wrap:false},
+  {name:"thingproxy",  mk:u=>"https://thingproxy.freeboard.io/fetch/"+u, wrap:false}
 ];
 // Eigener Proxy (z.B. Cloudflare-Worker) hat Vorrang, wenn in den Einstellungen hinterlegt.
 // Tolerant: akzeptiert "…/?url={u}", "…/?url=" oder nur die Worker-Basis-URL.
+function proxyMaker(raw){
+  if(raw.includes("{u}"))     return u=>raw.replace("{u}",encodeURIComponent(u));
+  if(/[?&]url=$/.test(raw))   return u=>raw+encodeURIComponent(u);
+  return u=>raw+(raw.includes("?")?"&":"?")+"url="+encodeURIComponent(u);
+}
 function proxyChain(){
   const raw=((state.settings&&state.settings.proxy)||"").trim();
   if(!raw) return PROXIES;
-  let mk;
-  if(raw.includes("{u}"))         mk=u=>raw.replace("{u}",encodeURIComponent(u));
-  else if(/[?&]url=$/.test(raw))  mk=u=>raw+encodeURIComponent(u);
-  else                            mk=u=>raw+(raw.includes("?")?"&":"?")+"url="+encodeURIComponent(u);
-  return [{mk,wrap:false}, ...PROXIES];
+  return [{name:"eigener Proxy", mk:proxyMaker(raw), wrap:false}, ...PROXIES];
+}
+// Fehlertext der Gegenstelle mitnehmen — zeigt z.B. Yahoos „Too Many Requests" statt nur „HTTP 429".
+async function proxyErrTxt(r){
+  try{ const t=(await r.text()).replace(/\s+/g," ").trim(); return t?" ("+t.slice(0,70)+")":""; }catch(e){ return ""; }
 }
 async function proxyJSON(url){
-  let last="";
+  const errs=[];
   for(const p of proxyChain()){
     try{
       const r=await fetch(p.mk(url),{cache:"no-store"});
-      if(!r.ok){ last="HTTP "+r.status; continue; }
+      if(!r.ok){ errs.push(p.name+": HTTP "+r.status+await proxyErrTxt(r)); continue; }
       if(p.wrap){ const w=await r.json(); return JSON.parse(w.contents); }
       return await r.json();
-    }catch(e){ last=e.name||"Fehler"; }
+    }catch(e){ errs.push(p.name+": "+(e.name==="TypeError"?"nicht erreichbar":(e.name||"Fehler"))); }
   }
-  throw new Error(last||"Proxy nicht erreichbar");
+  const err=new Error(errs.join(" · ")||"Proxy nicht erreichbar");
+  err.proxy=true;   // kein Ticker-Problem, sondern die Leitung → in der Meldung getrennt anzeigen
+  throw err;
+}
+// Yahoo sperrt query1/query2 zeitweise einzeln → bei Fehlschlag den anderen Host nehmen und ihn sich merken.
+let yhHost="query1";
+async function yahooJSON(path){
+  try{ return await proxyJSON("https://"+yhHost+".finance.yahoo.com"+path); }
+  catch(e){
+    const alt=yhHost==="query1"?"query2":"query1";
+    const b=await proxyJSON("https://"+alt+".finance.yahoo.com"+path);
+    yhHost=alt; return b;
+  }
 }
 async function yahooQuote(sym){
-  const u="https://query1.finance.yahoo.com/v8/finance/chart/"+encodeURIComponent(sym)+"?range=1d&interval=1d";
-  const b=await proxyJSON(u);
+  const b=await yahooJSON("/v8/finance/chart/"+encodeURIComponent(sym)+"?range=1d&interval=1d");
   const m=b&&b.chart&&b.chart.result&&b.chart.result[0]&&b.chart.result[0].meta;
   if(!m || m.regularMarketPrice==null) throw new Error("kein Kurs (Ticker prüfen)");
   return {price:+m.regularMarketPrice, cur:m.currency||"EUR", time:(m.regularMarketTime?m.regularMarketTime*1000:0),
@@ -650,13 +666,15 @@ async function refreshPrices(auto){
   const btn=document.getElementById("refreshBtn"); if(btn)btn.textContent="⟳ lädt…";
   try{
     // Pro Symbol EINZELN → ein kaputter Ticker blockiert die anderen nicht.
-    const quotes={}; const fail=[];
+    const quotes={}; const fail=[]; let diag="";   // diag = eine Proxy-Meldung im Klartext, nicht pro Ticker wiederholt
     const CHUNK=4;   // wenige parallel → schont den Gratis-Proxy (zu viele auf einmal → TypeError)
     for(let i=0;i<syms.length;i+=CHUNK){
       await Promise.all(syms.slice(i,i+CHUNK).map(async sym=>{
         for(let a=0;a<3;a++){                                  // bis zu 3 Versuche (Proxy zickt gern kurz)
           try{ quotes[sym]=await yahooQuote(sym); return; }
-          catch(e){ if(a<2){ await sleep(400); continue; } fail.push(sym+" — "+(e.message||"kein Kurs")); }
+          catch(e){ if(a<2){ await sleep(400); continue; }
+            if(e&&e.proxy){ diag=diag||e.message; fail.push(sym+" — Abruf blockiert"); }
+            else fail.push(sym+" — "+(e.message||"kein Kurs")); }
         }
       }));
       if(i+CHUNK<syms.length) await sleep(200);                // kleine Pause zwischen den Bündeln
@@ -682,7 +700,8 @@ async function refreshPrices(auto){
     save(); render();
     if(auto){ if(ok)toast("✓ Kurse aktualisiert"); }
     else if(fail.length)alert(ok+" Kurs(e) aktualisiert.\n\nKein Kurs für:\n• "+fail.join("\n• ")+
-      "\n\nTipp: Ticker im Yahoo-Format prüfen (🔍 im Editor): z.B. SAP.DE (Xetra), BY6.F (Frankfurt), AAPL (US). Nicht börsengelistete Werte (z.B. SpaceX) manuell pflegen.");
+      (diag?"\n\nProxy meldet: "+diag+"\n→ Einstellungen → Proxy testen zeigt, woran es liegt."
+           :"\n\nTipp: Ticker im Yahoo-Format prüfen (🔍 im Editor): z.B. SAP.DE (Xetra), BY6.F (Frankfurt), AAPL (US). Nicht börsengelistete Werte (z.B. SpaceX) manuell pflegen."));
     else toast("✓ "+ok+" Kurse aktualisiert");
   }catch(e){
     if(!auto)alert("Abruf fehlgeschlagen (offline oder Proxy/Yahoo nicht erreichbar).");
@@ -700,7 +719,7 @@ async function symSearch(){
   if(!q){box.innerHTML='<div class="hint">Erst Name oder Kürzel oben eintippen (z.B. SAP oder Steico), dann 🔍.</div>';return;}
   box.innerHTML='<div class="hint">Suche…</div>';
   try{
-    const b=await proxyJSON("https://query1.finance.yahoo.com/v1/finance/search?q="+encodeURIComponent(q)+"&quotesCount=12&newsCount=0");
+    const b=await yahooJSON("/v1/finance/search?q="+encodeURIComponent(q)+"&quotesCount=12&newsCount=0");
     const data=(b.quotes||[]).filter(x=>x.symbol && (x.quoteType==="EQUITY"||x.quoteType==="ETF"));
     if(!data.length){box.innerHTML='<div class="hint">Nichts gefunden. Anderes Kürzel probieren.</div>';return;}
     box.innerHTML=data.map(x=>{
@@ -991,7 +1010,10 @@ function openBackup(){
       <label>Eigener Kurs-Proxy (empfohlen)</label>
       <input id="f_proxy" value="${esc(state.settings.proxy||"")}" placeholder="https://…workers.dev/?url=" autocomplete="off">
       <div class="hint" style="margin:6px 0 0">Eigener Cloudflare-Worker → stabile Kurse ohne Rate-Limit. Leer = kostenlose Gemeinschafts-Proxys (fallen zeitweise aus). Pro Gerät einmal eintragen.</div>
-      <div class="sheet-actions" style="margin-top:8px"><button class="btn sec" style="flex:1" onclick="saveProxy()">Proxy speichern</button></div>
+      <div class="sheet-actions" style="margin-top:8px">
+        <button class="btn sec" style="flex:1" onclick="testProxy()">🔍 Proxy testen</button>
+        <button class="btn sec" style="flex:1" onclick="saveProxy()">Proxy speichern</button></div>
+      <div id="proxyTest" class="hint" style="margin:8px 0 0"></div>
     </div>
     <div style="border-top:1px solid var(--line);margin:4px 0 14px;padding-top:14px">
       <div class="row" style="margin-bottom:8px"><b>Sync über GitHub</b><div class="spacer"></div>
@@ -1030,6 +1052,28 @@ function openBackup(){
 }
 function toggleAuto(){state.settings.autoRefresh=!state.settings.autoRefresh;save();startPriceTimer();openBackup();render();}
 function saveProxy(){state.settings.proxy=val("f_proxy").trim();save();toast(state.settings.proxy?"✓ Proxy gespeichert":"Proxy geleert – Gemeinschafts-Proxys");openBackup();}
+// Testet GENAU die eingetippte Adresse (ohne Ausweich-Proxys) und sagt im Klartext, woran es hakt.
+async function testProxy(){
+  const out=document.getElementById("proxyTest"); if(!out)return;
+  const raw=val("f_proxy").trim();
+  if(!raw){ out.textContent="Kein eigener Proxy eingetragen — es laufen die Gemeinschafts-Proxys."; return; }
+  out.textContent="Teste…";
+  const target="https://query1.finance.yahoo.com/v8/finance/chart/AAPL?range=1d&interval=1d";
+  let r;
+  try{ r=await fetch(proxyMaker(raw)(target),{cache:"no-store"}); }
+  catch(e){ out.textContent="✗ Nicht erreichbar — Adresse prüfen (oder der Worker schickt keine CORS-Freigabe)."; return; }
+  if(!r.ok){ out.textContent="✗ Proxy antwortet HTTP "+r.status+await proxyErrTxt(r)+
+    (r.status===429?" — Yahoo drosselt den Worker."
+    :r.status===400?" — der Worker lässt diese Ziel-Adresse nicht durch."
+    :r.status===404?" — unter dieser Adresse liegt kein Worker."
+    :""); return; }
+  let m;
+  try{ const b=await r.json(); m=b&&b.chart&&b.chart.result&&b.chart.result[0]&&b.chart.result[0].meta; }
+  catch(e){ out.textContent="✗ Antwort ist kein JSON — der Worker reicht die Yahoo-Antwort nicht durch."; return; }
+  if(!m||m.regularMarketPrice==null){ out.textContent="✗ Antwort ohne Kurs — Yahoo hat den Abruf abgewiesen."; return; }
+  state.settings.proxy=raw; save();   // was funktioniert, wird gleich übernommen — spart den zweiten Tipp
+  out.textContent="✓ Läuft — AAPL "+m.regularMarketPrice+" "+(m.currency||"")+" · gespeichert";
+}
 function toggleAutoSync(){state.settings.autoSync=!state.settings.autoSync;save();openBackup();}
 function saveGh(){
   state.settings.gh={token:val("f_ghtoken").trim(),repo:val("f_ghrepo").trim(),
@@ -1195,7 +1239,7 @@ async function tdSuggestTickers(){
   let done=0, filled=0;
   const one=async(u)=>{
     try{
-      const b=await proxyJSON("https://query1.finance.yahoo.com/v1/finance/search?q="+encodeURIComponent(u.isin)+"&quotesCount=8&newsCount=0");
+      const b=await yahooJSON("/v1/finance/search?q="+encodeURIComponent(u.isin)+"&quotesCount=8&newsCount=0");
       const qs=((b&&b.quotes)||[]).filter(q=>q.symbol&&(rank[q.quoteType]!=null));
       qs.sort((a,c)=>(rank[a.quoteType]??9)-(rank[c.quoteType]??9));
       const pick=qs.length?qs[0].symbol:"";
