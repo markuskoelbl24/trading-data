@@ -532,7 +532,7 @@ function renderPos(p,m,idx){
   el.innerHTML=`
     <div class="pos-head" onclick="toggleCollapse('${p.id}')">
       <div class="ph-left">
-        <div class="titel">${esc(p.titel||"(ohne Titel)")}<span class="chev">${collapsed?"▸":"▾"}</span></div>
+        <div class="titel">${esc(p.titel||"(ohne Titel)")}${p.broker?` <span class="badge">${esc(p.broker)}</span>`:""}<span class="chev">${collapsed?"▸":"▾"}</span></div>
         <div class="ph-sub">${subLeft}${stopBadge}</div>
       </div>
       ${right}
@@ -1110,9 +1110,9 @@ function tdBuildPlan(text){
   const seen=new Set(); let maxDate="";
   for(const p of state.positions) for(const it of (p.tx||[]).concat(p.div||[])){ if(it.trid)seen.add(it.trid); const d=(it.datum||"").slice(0,10); if(d>maxDate)maxDate=d; }
   const knownIsin=new Set(), knownName=new Set();
-  for(const p of state.positions){ if(p.isin)knownIsin.add(p.isin); const k=tdNorm(p.titel); if(k)knownName.add(k); }
+  for(const p of state.positions){ const bk=(p.broker||"TR"); if(p.isin)knownIsin.add(bk+"|"+p.isin); const k=tdNorm(p.titel); if(k)knownName.add(bk+"|"+k); }
   const isinMap=state.settings.isinMap||{};
-  // Netto-Stück je ISIN (Kauf +, Verkauf − stehen so in der CSV) → noch gehalten?
+  // Netto-Stück je Symbol (Kauf +, Verkauf − stehen so in der CSV) → noch gehalten?
   const net={}; for(const r of rows){ const isin=(r.symbol||"").trim(); if(!isin)continue; const k=tdClassify(r); if(k==="kauf"||k==="verkauf")net[isin]=(net[isin]||0)+(tdCsvNum(r.shares)||0); }
   const cand=[]; const unknown={}; let skipped=0, noWP=0;
   for(const r of rows){
@@ -1120,9 +1120,10 @@ function tdBuildPlan(text){
     const trid=(r.transaction_id||"").trim();
     if(trid && seen.has(trid)){skipped++;continue;}
     const isin=(r.symbol||"").trim(), name=(r.name||"").trim(), dt=(r.date||"").slice(0,10);
-    const isKnown = knownIsin.has(isin) || knownName.has(tdNorm(name)) || !!isinMap[isin];
-    if(!isKnown){ if(!unknown[isin])unknown[isin]={isin,name,count:0,last:"",held:(net[isin]||0)>0.0001}; unknown[isin].count++; if(dt>unknown[isin].last)unknown[isin].last=dt; }
-    cand.push({ isin, name, kind, trid, datum:dt,
+    const broker=(String(r.broker||"TR").toUpperCase().trim())||"TR";
+    const isKnown = knownIsin.has(broker+"|"+isin) || knownName.has(broker+"|"+tdNorm(name)) || !!isinMap[isin];
+    if(!isKnown){ if(!unknown[isin])unknown[isin]={isin,name,count:0,last:"",held:(net[isin]||0)>0.0001,broker}; unknown[isin].count++; if(dt>unknown[isin].last)unknown[isin].last=dt; }
+    cand.push({ isin, name, kind, trid, datum:dt, broker,
       stueck:Math.abs(tdCsvNum(r.shares)||0), kurs:Math.abs(tdCsvNum(r.price)||0),
       fee:Math.abs(tdCsvNum(r.fee)||0), tax:Math.abs(tdCsvNum(r.tax)||0), amount:Math.abs(tdCsvNum(r.amount)||0) }); }
   return {cand, unknown, skipped, noWP, total:rows.length, maxDate}; }
@@ -1131,20 +1132,22 @@ function tdSimulate(assign, mutate){
   const positions = mutate ? state.positions : JSON.parse(JSON.stringify(state.positions));
   const isinMap = Object.assign({}, state.settings.isinMap||{}, assign||{});
   const byName={}, byTicker={}, byIsin={};
-  for(const p of positions){ const k=tdNorm(p.titel); if(k)byName[k]=p; if(p.symbol)byTicker[p.symbol.toUpperCase()]=p; if(p.isin)byIsin[p.isin]=p; }
+  for(const p of positions){ const bk=(p.broker||"TR"); const k=tdNorm(p.titel); if(k)byName[bk+"|"+k]=p; if(p.symbol)byTicker[bk+"|"+p.symbol.toUpperCase()]=p; if(p.isin)byIsin[bk+"|"+p.isin]=p; }
   const seen=new Set(), posMaxDate={}; for(const p of positions){ let mx=""; for(const it of (p.tx||[]).concat(p.div||[])){ if(it.trid)seen.add(it.trid); const d=(it.datum||"").slice(0,10); if(d>mx)mx=d; } posMaxDate[p.id]=mx; }
   const isNew={}, used={}, now=Date.now();
   let backfill=0, added=0, skippedSeen=0, skippedBaseline=0, newPos=0, unresolved=0;
   for(const c of tdPlan.cand){
     if(c.trid && seen.has(c.trid)){ skippedSeen++; continue; }
-    const ticker = String(isinMap[c.isin] || (byName[tdNorm(c.name)]?byName[tdNorm(c.name)].symbol:"") || "").toUpperCase();
-    let p = byIsin[c.isin] || (ticker?byTicker[ticker]:null) || byName[tdNorm(c.name)];
+    const bk=(c.broker||"TR");
+    const ticker = String(isinMap[c.isin] || (byName[bk+"|"+tdNorm(c.name)]?byName[bk+"|"+tdNorm(c.name)].symbol:"") || (bk!=="TR"?c.isin:"") || "").toUpperCase();
+    let p = (bk!=="TR"?null:byIsin[bk+"|"+c.isin]) || (ticker?byTicker[bk+"|"+ticker]:null) || byName[bk+"|"+tdNorm(c.name)];
     if(!p){
       const held = tdPlan.unknown[c.isin] && tdPlan.unknown[c.isin].held;
       if(!held && !ticker){ unresolved++; continue; }              // verkauft/alt + kein Ticker → überspringen
-      p={id:uid(),titel:c.name||ticker||c.isin,symbol:ticker,isin:c.isin,branche:"",stop:"",kursAktuell:"",notiz:"",tx:[],div:[],_u:now};
-      positions.push(p); byIsin[c.isin]=p; if(ticker)byTicker[ticker]=p; isNew[p.id]=true; posMaxDate[p.id]=""; newPos++;
-    } else { if(!p.isin){ p.isin=c.isin; if(mutate)touch(p); } if(ticker && !p.symbol){ p.symbol=ticker; if(mutate)touch(p); } }
+      p={id:uid(),titel:c.name||ticker||c.isin,symbol:ticker,isin:(bk==="TR"?c.isin:""),branche:"",stop:"",kursAktuell:"",notiz:"",tx:[],div:[],_u:now};
+      if(bk!=="TR")p.broker=bk;
+      positions.push(p); if(bk==="TR")byIsin[bk+"|"+c.isin]=p; if(ticker)byTicker[bk+"|"+ticker]=p; isNew[p.id]=true; posMaxDate[p.id]=""; newPos++;
+    } else { if(bk==="TR" && !p.isin){ p.isin=c.isin; if(mutate)touch(p); } if(ticker && !p.symbol){ p.symbol=ticker; if(mutate)touch(p); } }
     if(!used[p.id])used[p.id]=new Set();
     if(c.kind==="dividende"){
       const m=(p.div||[]).find(d=>!used[p.id].has(d.id)&&!d.trid&&(d.datum||"").slice(0,10)===c.datum&&Math.abs((num(d.netto)||0)-c.amount)<0.02);
