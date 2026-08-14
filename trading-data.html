@@ -106,6 +106,7 @@
   .ph-sub .gv.green{color:var(--green)} .ph-sub .gv.red{color:var(--red)}
   .ph-right{text-align:right;white-space:nowrap}
   .ph-kurs{font-size:17px;font-weight:700}
+  .ph-kurs.stale{color:var(--muted);text-decoration:line-through;text-decoration-thickness:1px}
   .ph-day{font-size:13px;font-weight:700;margin-top:2px;cursor:pointer;display:inline-block}
   .ph-day.up{color:var(--green)} .ph-day.down{color:var(--red)} .ph-day.flat{color:var(--muted);cursor:default}
   .ph-edit{align-self:flex-start}
@@ -528,11 +529,13 @@ function renderPos(p,m,idx){
   const stopBadge = p.stop?` <span class="badge${belowStop?" badge-red":""}">Stop ${feur(num(p.stop))}</span>`:"";
   const gesWrap = `<span class="ph-ges">Gesamt ${gesHtml(m)}</span>`;
   const subLeft = m.openQty>0 ? `<span>Position <b>${feur(m.curVal)}</b></span> ${gesWrap}` : `<span>Geschlossen</span> ${gesWrap}`;
-  const right = m.openQty>0 ? `<div class="ph-right"><div class="ph-kurs">${m.hasKurs?feur(m.kurs):"—"}</div>${dayHtml(p,m)}</div>` : "";
+  const isDead = !!p.kursDead && m.openQty>0;   // Yahoo führt das Papier nicht mehr → angezeigter Kurs ist Vergangenheit
+  const deadBadge = isDead?` <span class="badge badge-red">kein Kurs</span>`:"";
+  const right = m.openQty>0 ? `<div class="ph-right"><div class="ph-kurs${isDead?" stale":""}">${m.hasKurs?feur(m.kurs):"—"}</div>${isDead?"":dayHtml(p,m)}</div>` : "";
   el.innerHTML=`
     <div class="pos-head" onclick="toggleCollapse('${p.id}')">
       <div class="ph-left">
-        <div class="titel">${esc(p.titel||"(ohne Titel)")}${p.broker?` <span class="badge">${esc(p.broker)}</span>`:""}<span class="chev">${collapsed?"▸":"▾"}</span></div>
+        <div class="titel">${esc(p.titel||"(ohne Titel)")}${p.broker?` <span class="badge">${esc(p.broker)}</span>`:""}${deadBadge}<span class="chev">${collapsed?"▸":"▾"}</span></div>
         <div class="ph-sub">${subLeft}${stopBadge}</div>
       </div>
       ${right}
@@ -546,11 +549,13 @@ function renderPos(p,m,idx){
         ${m.divs?`<button class="divchip ${p.divOff?"off":""}" onclick="toggleDivOff('${p.id}')" title="Dividende in Gesamt mitzählen"><span class="cbox">${p.divOff?"":"✓"}</span> Div ${feur(m.divs)} in Gesamt</button>`:""}
         ${m.steuer?`<button class="divchip ${p.steuerOn?"":"off"}" onclick="toggleSteuer('${p.id}')" title="Steuer in Gesamt und Break-even einrechnen"><span class="cbox">${p.steuerOn?"✓":""}</span> Steuer ${feur(m.steuer)} in Gesamt</button>`:""}
       </div>
+      ${isDead?`<div class="warnmsg">⚠︎ Seit ${fdate(new Date(p.kursDead).toISOString().slice(0,10))} kein Kurs mehr — ${esc(DEAD_MSG)}. Angezeigt ist der letzte bekannte Kurs.</div>`:""}
       ${belowStop?`<div class="stopmsg">⚠︎ Kurs ${feur(m.kurs)} unter Stop ${feur(stopVal)}</div>`:""}
       ${m.oversell?`<div class="warnmsg">⚠︎ Es wurde mehr verkauft als (bisher) gekauft — prüfe die Stückzahlen.</div>`:""}
       <div class="pos-actions">
         <button class="btn sm" onclick="openTx('${p.id}')">+ Kauf/Verkauf</button>
         <button class="btn sec sm" onclick="openDiv('${p.id}')">+ Dividende</button>
+        ${isDead?`<button class="btn sec sm" onclick="koAusbuchen('${p.id}')">Wertlos ausbuchen</button>`:""}
       </div>
       <details data-pid="${p.id}" ${openDetails.has(p.id)?"open":""}><summary>Buchungen (${allEntries.length})</summary>${txHtml}</details>
     </div>
@@ -612,18 +617,32 @@ function proxyChain(){
   return [{name:"eigener Proxy", mk:proxyMaker(raw), wrap:false}, ...PROXIES];
 }
 // Fehlertext der Gegenstelle mitnehmen — zeigt z.B. Yahoos „Too Many Requests" statt nur „HTTP 429".
-async function proxyErrTxt(r){
-  try{ const t=(await r.text()).replace(/\s+/g," ").trim(); return t?" ("+t.slice(0,70)+")":""; }catch(e){ return ""; }
+function snip(t){ const s=(t||"").replace(/\s+/g," ").trim(); return s?" ("+s.slice(0,70)+")":""; }
+async function proxyErrTxt(r){ try{ return snip(await r.text()); }catch(e){ return ""; } }
+const DEAD_MSG="von Yahoo nicht mehr geführt (ausgelaufen / Knock-out?)";
+// Yahoo meldet ausgelaufene Papiere eindeutig — dann bringt auch kein anderer Proxy etwas.
+function yahooDead(t){
+  try{ const e=(JSON.parse(t)||{}).chart?.error;
+    if(e && (e.code==="Not Found" || /delist|no data|not found/i.test(e.description||""))) return true;
+  }catch(e){}
+  return false;
 }
+const deadErr=()=>Object.assign(new Error(DEAD_MSG),{dead:true});
 async function proxyJSON(url){
   const errs=[];
   for(const p of proxyChain()){
+    let r;
+    try{ r=await fetch(p.mk(url),{cache:"no-store"}); }
+    catch(e){ errs.push(p.name+": "+(e.name==="TypeError"?"nicht erreichbar":(e.name||"Fehler"))); continue; }
+    if(!r.ok){
+      const t=await r.text().catch(()=>"");
+      if(yahooDead(t)) throw deadErr();          // klare Absage → Kette abbrechen statt 4× dasselbe zu fragen
+      errs.push(p.name+": HTTP "+r.status+snip(t)); continue;
+    }
     try{
-      const r=await fetch(p.mk(url),{cache:"no-store"});
-      if(!r.ok){ errs.push(p.name+": HTTP "+r.status+await proxyErrTxt(r)); continue; }
       if(p.wrap){ const w=await r.json(); return JSON.parse(w.contents); }
       return await r.json();
-    }catch(e){ errs.push(p.name+": "+(e.name==="TypeError"?"nicht erreichbar":(e.name||"Fehler"))); }
+    }catch(e){ errs.push(p.name+": Antwort unlesbar"); }
   }
   const err=new Error(errs.join(" · ")||"Proxy nicht erreichbar");
   err.proxy=true;   // kein Ticker-Problem, sondern die Leitung → in der Meldung getrennt anzeigen
@@ -634,6 +653,7 @@ let yhHost="query1";
 async function yahooJSON(path){
   try{ return await proxyJSON("https://"+yhHost+".finance.yahoo.com"+path); }
   catch(e){
+    if(e&&e.dead) throw e;                       // Papier gibt es nicht mehr → der andere Host sagt dasselbe
     const alt=yhHost==="query1"?"query2":"query1";
     const b=await proxyJSON("https://"+alt+".finance.yahoo.com"+path);
     yhHost=alt; return b;
@@ -641,6 +661,7 @@ async function yahooJSON(path){
 }
 async function yahooQuote(sym){
   const b=await yahooJSON("/v8/finance/chart/"+encodeURIComponent(sym)+"?range=1d&interval=1d");
+  if(b&&b.chart&&b.chart.error) throw deadErr();   // manche Proxys reichen die Absage mit Status 200 durch
   const m=b&&b.chart&&b.chart.result&&b.chart.result[0]&&b.chart.result[0].meta;
   if(!m || m.regularMarketPrice==null) throw new Error("kein Kurs (Ticker prüfen)");
   return {price:+m.regularMarketPrice, cur:m.currency||"EUR", time:(m.regularMarketTime?m.regularMarketTime*1000:0),
@@ -666,13 +687,15 @@ async function refreshPrices(auto){
   const btn=document.getElementById("refreshBtn"); if(btn)btn.textContent="⟳ lädt…";
   try{
     // Pro Symbol EINZELN → ein kaputter Ticker blockiert die anderen nicht.
-    const quotes={}; const fail=[]; let diag="";   // diag = eine Proxy-Meldung im Klartext, nicht pro Ticker wiederholt
+    const quotes={}; const dead={}; const fail=[]; let diag="";   // diag = eine Proxy-Meldung im Klartext, nicht pro Ticker wiederholt
     const CHUNK=4;   // wenige parallel → schont den Gratis-Proxy (zu viele auf einmal → TypeError)
     for(let i=0;i<syms.length;i+=CHUNK){
       await Promise.all(syms.slice(i,i+CHUNK).map(async sym=>{
         for(let a=0;a<3;a++){                                  // bis zu 3 Versuche (Proxy zickt gern kurz)
           try{ quotes[sym]=await yahooQuote(sym); return; }
-          catch(e){ if(a<2){ await sleep(400); continue; }
+          catch(e){
+            if(e&&e.dead){ dead[sym]=1; fail.push(sym+" — "+e.message); return; }   // Wiederholen sinnlos
+            if(a<2){ await sleep(400); continue; }
             if(e&&e.proxy){ diag=diag||e.message; fail.push(sym+" — Abruf blockiert"); }
             else fail.push(sym+" — "+(e.message||"kein Kurs")); }
         }
@@ -687,7 +710,9 @@ async function refreshPrices(auto){
     for(const p of state.positions){
       const s=(p.symbol||"").trim();
       if(!s || compute(p).openQty<=0)continue;
+      if(dead[s]){ if(!p.kursDead){ p.kursDead=Date.now(); touch(p); } continue; }   // ausgelaufen → sichtbar markieren
       const q=quotes[s]; if(!q)continue;
+      if(p.kursDead){ delete p.kursDead; touch(p); }                                 // liefert wieder → Marke weg
       let eur=q.price, pv=(q.prev!=null?q.prev:null), from="";
       if(q.cur && q.cur!=="EUR"){
         if(fx[q.cur]===undefined){ const msg=s+" — €-Umrechnung ("+q.cur+") nicht verfügbar"; if(!fail.includes(msg))fail.push(msg); continue; }
@@ -700,6 +725,7 @@ async function refreshPrices(auto){
     save(); render();
     if(auto){ if(ok)toast("✓ Kurse aktualisiert"); }
     else if(fail.length)alert(ok+" Kurs(e) aktualisiert.\n\nKein Kurs für:\n• "+fail.join("\n• ")+
+      (Object.keys(dead).length?"\n\nAusgelaufen/Knock-out? Position aufklappen → Wertlos ausbuchen.":"")+
       (diag?"\n\nProxy meldet: "+diag+"\n→ Einstellungen → Proxy testen zeigt, woran es liegt."
            :"\n\nTipp: Ticker im Yahoo-Format prüfen (🔍 im Editor): z.B. SAP.DE (Xetra), BY6.F (Frankfurt), AAPL (US). Nicht börsengelistete Werte (z.B. SpaceX) manuell pflegen."));
     else toast("✓ "+ok+" Kurse aktualisiert");
@@ -908,9 +934,10 @@ function delPos(pid){
 
 /* ---------- Kauf/Verkauf ---------- */
 let txTyp="kauf";
-function openTx(pid,tid){
+function openTx(pid,tid,pre){        // pre = Vorbelegung für neue Buchungen (z.B. Knock-out)
   const p=find(pid);const t=tid?(p.tx||[]).find(x=>x.id===tid):null;
-  txTyp=t?t.typ:"kauf";
+  const v=t||pre||{};
+  txTyp=v.typ||"kauf";
   openSheet(`
     <h2>${t?"Buchung bearbeiten":"Kauf / Verkauf"} · ${esc(p.titel)}</h2>
     <div class="field"><div class="seg">
@@ -919,17 +946,18 @@ function openTx(pid,tid){
     </div></div>
     <div class="two">
       <div class="field"><label>Datum</label><input id="f_datum" type="date" value="${t?t.datum:today()}"></div>
-      <div class="field"><label>Stück</label><input id="f_stueck" inputmode="decimal" value="${t?esc(t.stueck):""}" placeholder="z.B. 60"></div>
+      <div class="field"><label>Stück</label><input id="f_stueck" inputmode="decimal" value="${esc(v.stueck??"")}" placeholder="z.B. 60"></div>
     </div>
     <div class="two">
-      <div class="field"><label>Kurs</label><input id="f_kurs" inputmode="decimal" value="${t?esc(t.kurs):""}" placeholder="z.B. 3,63"></div>
-      <div class="field"><label>Gebühr (€)</label><input id="f_geb" inputmode="decimal" value="${t?esc(t.gebuehr??""):""}" placeholder="0"></div>
+      <div class="field"><label>Kurs</label><input id="f_kurs" inputmode="decimal" value="${esc(v.kurs??"")}" placeholder="z.B. 3,63"></div>
+      <div class="field"><label>Gebühr (€)</label><input id="f_geb" inputmode="decimal" value="${esc(v.gebuehr??"")}" placeholder="0"></div>
     </div>
     <div class="two">
-      <div class="field"><label>Steuer (€)</label><input id="f_steuer" inputmode="decimal" value="${t?esc(t.steuer??""):""}" placeholder="0"></div>
+      <div class="field"><label>Steuer (€)</label><input id="f_steuer" inputmode="decimal" value="${esc(v.steuer??"")}" placeholder="0"></div>
       <div class="field" style="align-self:end"><div class="hint" style="margin:0 0 9px">Zählt erst, wenn am Chip aktiviert.</div></div>
     </div>
-    <div class="field"><label>Notiz (optional)</label><input id="f_txnotiz" value="${t?esc(t.notiz||""):""}"></div>
+    <div class="field"><label>Notiz (optional)</label><input id="f_txnotiz" value="${esc(v.notiz||"")}"></div>
+    ${pre?`<div class="hint" style="color:var(--amber)">Ganze Restmenge zu 0 € — <b>Datum auf den Knock-out-Tag setzen</b>, dann speichern. Der Verlust wird als realisiert gebucht (FIFO), die Position gilt danach als geschlossen.</div>`:""}
     <div class="hint">Verkäufe werden automatisch den ältesten Käufen zugeordnet (FIFO) — du musst nichts paaren.${t?"":" Nach dem Speichern bleibt das Fenster offen für die nächste Buchung."}</div>
     <div class="sheet-actions">
       ${t?`<button class="del" onclick="delTx('${pid}','${tid}')">Löschen</button>
@@ -963,6 +991,14 @@ function saveTx(pid,tid){
   const dt=document.getElementById("f_datum"); if(dt)dt.value=lastDatum;  // Datum beibehalten
   const stf=document.getElementById("f_stueck"); if(stf)stf.focus();
   toast(lastTyp==="kauf"?"✓ Kauf gespeichert":"✓ Verkauf gespeichert");
+}
+// Knock-out / wertlos verfallen: Verkauf über die ganze Restmenge zu 0 € vorbereiten.
+// Bewusst nur vorbereitet, nicht sofort gebucht — der KO-Tag liegt meist in der Vergangenheit.
+function koAusbuchen(pid){
+  const p=find(pid); if(!p)return;
+  const m=compute(p);
+  if(!(m.openQty>0)){ alert("Diese Position ist bereits geschlossen."); return; }
+  openTx(pid,"",{typ:"verkauf",stueck:(m.openQty+"").replace(".",","),kurs:"0",notiz:"Knock-out / wertlos verfallen"});
 }
 function delTx(pid,tid){const p=find(pid);state.tombstones[tid]=Date.now();p.tx=p.tx.filter(x=>x.id!==tid);save();closeSheet();render();syncPushLater();}
 
