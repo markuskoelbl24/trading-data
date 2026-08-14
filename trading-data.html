@@ -106,7 +106,7 @@
   .ph-sub .gv.green{color:var(--green)} .ph-sub .gv.red{color:var(--red)}
   .ph-right{text-align:right;white-space:nowrap}
   .ph-kurs{font-size:17px;font-weight:700}
-  .ph-kurs.stale{color:var(--muted);text-decoration:line-through;text-decoration-thickness:1px}
+  .ph-kurs.soft{color:var(--muted)}   /* Kurs von Hand oder ausgeknockt → nicht als Live-Kurs lesen */
   .ph-day{font-size:13px;font-weight:700;margin-top:2px;cursor:pointer;display:inline-block}
   .ph-day.up{color:var(--green)} .ph-day.down{color:var(--red)} .ph-day.flat{color:var(--muted);cursor:default}
   .ph-edit{align-self:flex-start}
@@ -286,7 +286,9 @@ function compute(pos){
   const openQty=lots.reduce((s,l)=>s+l.q,0);
   const openCost=lots.reduce((s,l)=>s+l.q*(l.price+l.fps),0);
   const avg=openQty>0?openCost/openQty:0;
-  const kurs=num(pos.kursAktuell);
+  // Ausgeknockt/ausgelaufen (Yahoo führt es nicht mehr): wie im Depot beim Broker mit 0 € rechnen,
+  // bis die echte Ausbuchung per TR-CSV kommt. Der letzte Kurs bleibt in den Daten stehen.
+  const kurs=pos.kursDead?0:num(pos.kursAktuell);
   const hasKurs=!isNaN(kurs)&&openQty>0;
   const curVal=hasKurs?openQty*kurs:0;
   const unreal=hasKurs?curVal-openCost:0;
@@ -529,9 +531,10 @@ function renderPos(p,m,idx){
   const stopBadge = p.stop?` <span class="badge${belowStop?" badge-red":""}">Stop ${feur(num(p.stop))}</span>`:"";
   const gesWrap = `<span class="ph-ges">Gesamt ${gesHtml(m)}</span>`;
   const subLeft = m.openQty>0 ? `<span>Position <b>${feur(m.curVal)}</b></span> ${gesWrap}` : `<span>Geschlossen</span> ${gesWrap}`;
-  const isDead = !!p.kursDead && m.openQty>0;   // Yahoo führt das Papier nicht mehr → angezeigter Kurs ist Vergangenheit
+  const isDead = !!p.kursDead && m.openQty>0;   // Yahoo führt das Papier nicht mehr → zählt mit 0 €
+  const soft = isDead || !(p.symbol||"").trim();  // 0 nach Knock-out bzw. Kurs von Hand → grau statt weiß
   const deadBadge = isDead?` <span class="badge badge-red">kein Kurs</span>`:"";
-  const right = m.openQty>0 ? `<div class="ph-right"><div class="ph-kurs${isDead?" stale":""}">${m.hasKurs?feur(m.kurs):"—"}</div>${isDead?"":dayHtml(p,m)}</div>` : "";
+  const right = m.openQty>0 ? `<div class="ph-right"><div class="ph-kurs${soft?" soft":""}">${m.hasKurs?feur(m.kurs):"—"}</div>${isDead?"":dayHtml(p,m)}</div>` : "";
   el.innerHTML=`
     <div class="pos-head" onclick="toggleCollapse('${p.id}')">
       <div class="ph-left">
@@ -549,7 +552,7 @@ function renderPos(p,m,idx){
         ${m.divs?`<button class="divchip ${p.divOff?"off":""}" onclick="toggleDivOff('${p.id}')" title="Dividende in Gesamt mitzählen"><span class="cbox">${p.divOff?"":"✓"}</span> Div ${feur(m.divs)} in Gesamt</button>`:""}
         ${m.steuer?`<button class="divchip ${p.steuerOn?"":"off"}" onclick="toggleSteuer('${p.id}')" title="Steuer in Gesamt und Break-even einrechnen"><span class="cbox">${p.steuerOn?"✓":""}</span> Steuer ${feur(m.steuer)} in Gesamt</button>`:""}
       </div>
-      ${isDead?`<div class="warnmsg">⚠︎ Seit ${fdate(new Date(p.kursDead).toISOString().slice(0,10))} kein Kurs mehr — ${esc(DEAD_MSG)}. Angezeigt ist der letzte bekannte Kurs.</div>`:""}
+      ${isDead?`<div class="warnmsg">⚠︎ Kein Kurs seit ${fdate(new Date(p.kursDead).toISOString().slice(0,10))} — zählt mit 0 €.</div>`:""}
       ${belowStop?`<div class="stopmsg">⚠︎ Kurs ${feur(m.kurs)} unter Stop ${feur(stopVal)}</div>`:""}
       ${m.oversell?`<div class="warnmsg">⚠︎ Es wurde mehr verkauft als (bisher) gekauft — prüfe die Stückzahlen.</div>`:""}
       <div class="pos-actions">
@@ -619,7 +622,7 @@ function proxyChain(){
 // Fehlertext der Gegenstelle mitnehmen — zeigt z.B. Yahoos „Too Many Requests" statt nur „HTTP 429".
 function snip(t){ const s=(t||"").replace(/\s+/g," ").trim(); return s?" ("+s.slice(0,70)+")":""; }
 async function proxyErrTxt(r){ try{ return snip(await r.text()); }catch(e){ return ""; } }
-const DEAD_MSG="von Yahoo nicht mehr geführt (ausgelaufen / Knock-out?)";
+const DEAD_MSG="nicht mehr bei Yahoo (ausgelaufen/KO)";
 // Yahoo meldet ausgelaufene Papiere eindeutig — dann bringt auch kein anderer Proxy etwas.
 function yahooDead(t){
   try{ const e=(JSON.parse(t)||{}).chart?.error;
@@ -681,7 +684,7 @@ function kursTimeLbl(ms){
 async function refreshPrices(auto){
   if(priceBusy)return;
   const syms=openSymbols();
-  if(!syms.length){ if(!auto)alert("Keine offene Position mit Symbol. Trage bei einer Position einen Yahoo-Ticker ein (🔍 im Positions-Editor)."); return; }
+  if(!syms.length){ if(!auto)alert("Keine Position mit Yahoo-Ticker. Ticker im Positions-Editor eintragen (🔍)."); return; }
   if(auto && state.settings.pricesUpdated && Date.now()-state.settings.pricesUpdated < AUTO_THROTTLE_MS)return; // Kurz-Sperre gegen schnelles Neuladen
   priceBusy=true;
   const btn=document.getElementById("refreshBtn"); if(btn)btn.textContent="⟳ lädt…";
@@ -725,12 +728,11 @@ async function refreshPrices(auto){
     save(); render();
     if(auto){ if(ok)toast("✓ Kurse aktualisiert"); }
     else if(fail.length)alert(ok+" Kurs(e) aktualisiert.\n\nKein Kurs für:\n• "+fail.join("\n• ")+
-      (Object.keys(dead).length?"\n\nAusgelaufen/Knock-out? Position aufklappen → Wertlos ausbuchen.":"")+
-      (diag?"\n\nProxy meldet: "+diag+"\n→ Einstellungen → Proxy testen zeigt, woran es liegt."
-           :"\n\nTipp: Ticker im Yahoo-Format prüfen (🔍 im Editor): z.B. SAP.DE (Xetra), BY6.F (Frankfurt), AAPL (US). Nicht börsengelistete Werte (z.B. SpaceX) manuell pflegen."));
+      (Object.keys(dead).length?"\n\nAusgelaufen → zählt ab jetzt mit 0 €.":"")+
+      (diag?"\n\nProxy: "+diag:"\n\nTicker prüfen (🔍 im Editor), z.B. SAP.DE · AAPL."));
     else toast("✓ "+ok+" Kurse aktualisiert");
   }catch(e){
-    if(!auto)alert("Abruf fehlgeschlagen (offline oder Proxy/Yahoo nicht erreichbar).");
+    if(!auto)alert("Abruf fehlgeschlagen — offline oder Proxy tot.");
   }finally{
     priceBusy=false;
     const b=document.getElementById("refreshBtn"); if(b)b.textContent="⟳ Kurse";
@@ -907,7 +909,7 @@ function openPos(pid){
       <div id="symResults"></div>
     </div>
     <div class="field"><label>Notiz</label><input id="f_notiz" value="${p?esc(p.notiz||""):""}"></div>
-    <div class="hint"><b>Yahoo-Finance-Ticker</b> (Kurse gratis, US <b>und</b> Xetra/EU). Format: <b>SAP.DE</b> (Xetra), <b>BY6.F</b> (Frankfurt), <b>AAPL</b> (US), <b>1810.HK</b> (Hongkong). Mit <b>🔍 suchen</b> findest du ihn (★€ = in Euro). Zertifikate/KOs &amp; nicht gelistete Werte (SpaceX): leer lassen → manuell.</div>
+    <div class="hint">Yahoo-Ticker: <b>SAP.DE</b> · <b>AAPL</b> · <b>1810.HK</b> — oder <b>🔍 suchen</b> (★€ = in Euro). Zertifikate/KOs: leer lassen → Kurs von Hand.</div>
     <div class="sheet-actions">
       ${p?`<button class="del" onclick="delPos('${p.id}')">Löschen</button>`:""}
       <button class="btn sec" onclick="closeSheet()">Abbr.</button>
@@ -957,7 +959,7 @@ function openTx(pid,tid,pre){        // pre = Vorbelegung für neue Buchungen (z
       <div class="field" style="align-self:end"><div class="hint" style="margin:0 0 9px">Zählt erst, wenn am Chip aktiviert.</div></div>
     </div>
     <div class="field"><label>Notiz (optional)</label><input id="f_txnotiz" value="${esc(v.notiz||"")}"></div>
-    ${pre?`<div class="hint" style="color:var(--amber)">Ganze Restmenge zu 0 € — <b>Datum auf den Knock-out-Tag setzen</b>, dann speichern. Der Verlust wird als realisiert gebucht (FIFO), die Position gilt danach als geschlossen.</div>`:""}
+    ${pre?`<div class="hint" style="color:var(--amber)">Restmenge zu 0 € — <b>Datum auf den Ausbuchungstag</b>. Nur nötig, wenn du die TR-CSV nicht importierst.</div>`:""}
     <div class="hint">Verkäufe werden automatisch den ältesten Käufen zugeordnet (FIFO) — du musst nichts paaren.${t?"":" Nach dem Speichern bleibt das Fenster offen für die nächste Buchung."}</div>
     <div class="sheet-actions">
       ${t?`<button class="del" onclick="delTx('${pid}','${tid}')">Löschen</button>
@@ -1035,17 +1037,17 @@ function openBackup(){
     <h2>Backup &amp; Einstellungen</h2>
     <div class="field">
       <label>Live-Kurse</label>
-      <div class="hint">Kurse kommen von <b>Yahoo Finance</b> über einen kostenlosen Proxy — <b>kein API-Key nötig</b>. Fremdwährungen werden automatisch in € umgerechnet.</div>
+      <div class="hint"><b>Yahoo Finance</b> über Proxy, kein API-Key. Fremdwährungen automatisch in €.</div>
     </div>
     <div class="field" style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
       <button class="btn ${state.settings.autoRefresh?"":"sec"}" style="min-width:132px" onclick="toggleAuto()">
         Auto-Kurse: ${state.settings.autoRefresh?"An":"Aus"}</button>
-      <div class="hint" style="margin:0;flex:1">Kurse beim Start automatisch laden (leise, mit Kurz-Sperre gegen Neulade-Spam).</div>
+      <div class="hint" style="margin:0;flex:1">Kurse beim Start automatisch laden.</div>
     </div>
     <div class="field" style="margin-bottom:14px">
       <label>Eigener Kurs-Proxy (empfohlen)</label>
       <input id="f_proxy" value="${esc(state.settings.proxy||"")}" placeholder="https://…workers.dev/?url=" autocomplete="off">
-      <div class="hint" style="margin:6px 0 0">Eigener Cloudflare-Worker → stabile Kurse ohne Rate-Limit. Leer = kostenlose Gemeinschafts-Proxys (fallen zeitweise aus). Pro Gerät einmal eintragen.</div>
+      <div class="hint" style="margin:6px 0 0">Eigener Cloudflare-Worker = stabile Kurse. Leer = Gemeinschafts-Proxys (fallen zeitweise aus). Pro Gerät einmal.</div>
       <div class="sheet-actions" style="margin-top:8px">
         <button class="btn sec" style="flex:1" onclick="testProxy()">🔍 Proxy testen</button>
         <button class="btn sec" style="flex:1" onclick="saveProxy()">Proxy speichern</button></div>
