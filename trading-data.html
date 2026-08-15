@@ -239,9 +239,13 @@ function num(v){                                   // versteht "1.234,56" und "1
 const eur=new Intl.NumberFormat("de-DE",{style:"currency",currency:"EUR",maximumFractionDigits:2});
 const pct=new Intl.NumberFormat("de-DE",{maximumFractionDigits:1});
 const numf=new Intl.NumberFormat("de-DE",{maximumFractionDigits:4});
-function feur(n){return (n==null||isNaN(n))?"–":eur.format(n);}
+const _fmtCache={EUR:eur};
+let _dispCur="EUR";   // Anzeige-Währung des gerade gerenderten Blocks (Position nativ, Summen in EUR)
+function _cf(cur){ cur=String(cur||"EUR").toUpperCase(); if(!/^[A-Z]{3}$/.test(cur))cur="EUR"; let f=_fmtCache[cur]; if(!f){ try{ f=_fmtCache[cur]=new Intl.NumberFormat("de-DE",{style:"currency",currency:cur,maximumFractionDigits:2}); }catch(e){ f=_fmtCache[cur]=eur; } } return f; }
+function emoney(n){ return _cf(_dispCur).format(n); }
+function feur(n){return (n==null||isNaN(n))?"–":emoney(n);}
 function fpct(n){return (n==null||isNaN(n))?"–":(n>=0?"+":"")+pct.format(n)+" %";}
-function signEur(n){return (n>=0?"+":"")+eur.format(n);}
+function signEur(n){return (n>=0?"+":"")+emoney(n);}
 function cls(n){return n>0?"green":(n<0?"red":"");}
 function fdate(iso){if(!iso)return"";const[y,m,d]=iso.split("-");return d+"."+m+"."+y.slice(2);}
 function daysBetween(a,b){return Math.round((new Date(b)-new Date(a))/864e5);}
@@ -318,6 +322,7 @@ function compute(pos){
 
 /* ---------- Render ---------- */
 function render(){
+  _dispCur="EUR";   // Summen/Portfolio in EUR; je Positionskarte wird auf deren Währung gesetzt
   captureOpenDetails();   // offene Buchungs-Listen merken, bevor #list neu gebaut wird
   const list=document.getElementById("list");
   const total=document.getElementById("total");
@@ -328,8 +333,10 @@ function render(){
   }
   // Portfolio-Summe
   let tReal=0,tUnreal=0,tDiv=0,tDivOff=0,tCur=0,tGes=0;
+  const _fx=state.settings.fxRates||{};   // EUR je 1 Einheit Fremdwährung (aus letztem Kurs-Abruf)
   const metrics=state.positions.map(p=>{const m=compute(p);
-    tReal+=m.realized;tDiv+=m.divs;if(p.divOff)tDivOff+=m.divs;if(m.hasKurs){tUnreal+=m.unreal;tCur+=m.curVal;}tGes+=m.gesamt;return m;});
+    const cur=(p.currency||"EUR").toUpperCase(); const rate=cur==="EUR"?1:(_fx[cur]>0?_fx[cur]:1); m._eur=rate;
+    tReal+=m.realized*rate;tDiv+=m.divs*rate;if(p.divOff)tDivOff+=m.divs*rate;if(m.hasKurs){tUnreal+=m.unreal*rate;tCur+=m.curVal*rate;}tGes+=m.gesamt*rate;return m;});
   const hasSym=metrics.some((m,i)=>(state.positions[i].symbol||"").trim()&&m.openQty>0);
   const upd=state.settings.pricesUpdated;
   total.innerHTML=`
@@ -476,7 +483,7 @@ function dayHtml(p,m){
   if(!(m.openQty>0)||!m.hasKurs||!(p.prevClose>0)) return "";
   const abs=m.openQty*(m.kurs-p.prevClose), pc=(m.kurs-p.prevClose)/p.prevClose*100;
   const up=pc>=0, ar=up?"▲":"▼";
-  const txt=ar+" "+(state.settings.dayMode==="eur"? eur.format(Math.abs(abs)) : pct.format(Math.abs(pc))+" %");
+  const txt=ar+" "+(state.settings.dayMode==="eur"? emoney(Math.abs(abs)) : pct.format(Math.abs(pc))+" %");
   return `<div class="ph-day ${up?"up":"down"}" onclick="toggleDayMode(event)">${txt}</div>`;
 }
 function gesHtml(m){
@@ -489,6 +496,7 @@ function toggleCollapse(id){const c=state.settings.collapsed||(state.settings.co
 function setSort(s){state.settings.sortBy=s;save();render();}
 
 function renderPos(p,m,idx){
+  _dispCur=(p.currency||"EUR").toUpperCase();   // diese Karte in Positions-Währung anzeigen
   const el=document.createElement("div");
   const stopVal=num(p.stop);
   const belowStop=m.hasKurs && stopVal>0 && m.kurs<stopVal;   // Kurs unter Stop
@@ -523,7 +531,7 @@ function renderPos(p,m,idx){
       txHtml+=`<div class="tx">
         <span class="tag ${e.typ}">${e.typ==="kauf"?"Kauf":"Verk."}</span>
         <span class="desc"><span class="nb">${fdate(e.datum)}</span> · <span class="nb">${numf.format(st)}×${feur(ku)}</span>${ge?` <span class="nb">(Geb ${feur(ge)})</span>`:""}${extra}${e.notiz?" · "+esc(e.notiz):""}</span>
-        <span class="amt ${e.typ==="kauf"?"":cls(wert)}">${e.typ==="kauf"?feur(-wert):"+"+eur.format(wert)}</span>
+        <span class="amt ${e.typ==="kauf"?"":cls(wert)}">${e.typ==="kauf"?feur(-wert):"+"+emoney(wert)}</span>
         <button class="txedit" onclick="openTx('${p.id}','${e.id}')">✎</button></div>`;
     }
   }
@@ -706,9 +714,11 @@ async function refreshPrices(auto){
       if(i+CHUNK<syms.length) await sleep(200);                // kleine Pause zwischen den Bündeln
     }
     // Fremdwährungen → EUR (je Währung einmal, kostenlos ohne Key)
-    const curs=[...new Set(Object.values(quotes).map(q=>q.cur).filter(c=>c&&c!=="EUR"))];
+    const posCurs=state.positions.map(p=>(p.currency||"EUR").toUpperCase()).filter(c=>c&&c!=="EUR");
+    const curs=[...new Set(Object.values(quotes).map(q=>q.cur).filter(c=>c&&c!=="EUR").concat(posCurs))];
     const fx={};
     for(const c of curs){ const r=await fxToEur(c); if(r) fx[c]=r; }
+    if(Object.keys(fx).length){ state.settings.fxRates=Object.assign({}, state.settings.fxRates||{}, fx); }  // für Portfolio-Summe in EUR
     let ok=0;
     for(const p of state.positions){
       const s=(p.symbol||"").trim();
@@ -716,12 +726,14 @@ async function refreshPrices(auto){
       if(dead[s]){ if(!p.kursDead){ p.kursDead=Date.now(); touch(p); } continue; }   // ausgelaufen → sichtbar markieren
       const q=quotes[s]; if(!q)continue;
       if(p.kursDead){ delete p.kursDead; touch(p); }                                 // liefert wieder → Marke weg
-      let eur=q.price, pv=(q.prev!=null?q.prev:null), from="";
-      if(q.cur && q.cur!=="EUR"){
-        if(fx[q.cur]===undefined){ const msg=s+" — €-Umrechnung ("+q.cur+") nicht verfügbar"; if(!fail.includes(msg))fail.push(msg); continue; }
-        eur=q.price*fx[q.cur]; if(pv!=null)pv*=fx[q.cur]; from=q.cur;
+      const pcur=(p.currency||"EUR").toUpperCase();
+      const toEur=c=> c==="EUR"?1:fx[c];   // EUR je 1 c
+      let val=q.price, pv=(q.prev!=null?q.prev:null), from="";
+      if(q.cur && q.cur!==pcur){   // Fremdwährung des Kurses ≠ Anzeige-Währung der Position → umrechnen
+        if(toEur(q.cur)===undefined || toEur(pcur)===undefined){ const msg=s+" — Umrechnung ("+q.cur+"→"+pcur+") nicht verfügbar"; if(!fail.includes(msg))fail.push(msg); continue; }
+        const f=toEur(q.cur)/toEur(pcur); val=q.price*f; if(pv!=null)pv*=f; from=(pcur==="EUR"?q.cur:"");
       }
-      p.kursAktuell=(+(eur.toFixed(eur<10?4:2))+"").replace(".",","); p.fxFrom=from; p.kursTime=q.time||Date.now(); p.prevClose=(pv!=null?+pv.toFixed(4):null);
+      p.kursAktuell=(+(val.toFixed(val<10?4:2))+"").replace(".",","); p.fxFrom=from; p.kursTime=q.time||Date.now(); p.prevClose=(pv!=null?+pv.toFixed(4):null);
       ok++;
     }
     state.settings.pricesUpdated=Date.now();
