@@ -256,40 +256,47 @@ function compute(pos){
   // Transaktionen chronologisch (stabil nach Eingabereihenfolge)
   const tx=(pos.tx||[]).map((t,i)=>({...t,_i:i}))
     .sort((a,b)=> (a.datum<b.datum?-1:a.datum>b.datum?1:a._i-b._i));
-  const lots=[];            // FIFO-Schlange offener Käufe
+  // Signierte FIFO-Schlange: hält Long- ODER Short-Lots. Ein Trade, der gegen die
+  // offene Richtung läuft, schließt zuerst (realisiert), der Rest eröffnet neu.
+  // So zählt Leerverkauf→Eindeckung sauber als geschlossener Trade mit korrektem Gewinn;
+  // bei Roundtrips ist das Ergebnis sogar unabhängig von der Buchungs-Reihenfolge.
+  const lots=[];
   let realized=0, oversell=false, buyCostAll=0, steuerSum=0;
-  const perTx={};           // Ergebnis je Verkauf (fürs Anzeigen der Paarung)
+  const perTx={};           // Ergebnis je schließendem Trade (fürs Anzeigen der Paarung)
   for(const t of tx){
     const st=num(t.stueck), ku=num(t.kurs), ge=num(t.gebuehr)||0;
     if(!(st>0)||isNaN(ku))continue;
     steuerSum+=num(t.steuer)||0;   // Steuer wird gesammelt, aber nur auf Wunsch verrechnet (s.u.)
-    if(t.typ==="kauf"){
-      lots.push({q:st, price:ku, fps:ge/st});      // Gebühr pro Stück
-      buyCostAll+=st*ku+ge;
-    }else{ // verkauf
-      const sfps=ge/st; let toSell=st, r=0, matched=[];
-      while(toSell>1e-9 && lots.length){
-        const lot=lots[0];
-        const q=Math.min(toSell,lot.q);
-        const proceeds=q*ku - q*sfps;
-        const cost=q*lot.price + q*lot.fps;
-        r+=proceeds-cost;
-        matched.push({q,price:lot.price});
-        lot.q-=q; toSell-=q;
-        if(lot.q<=1e-9)lots.shift();
-      }
-      if(toSell>1e-9)oversell=true;   // mehr verkauft als gehalten
-      realized+=r;
-      perTx[t.id]={realized:r, matched, steuer:num(t.steuer)||0};
+    const fps=ge/st;                                 // Gebühr pro Stück
+    const side=t.typ==="kauf"?"long":"short";        // Richtung dieses Trades
+    if(t.typ==="kauf") buyCostAll+=st*ku+ge;
+    let qty=st, r=0, matched=[];
+    // Läuft der Trade gegen offene Gegen-Lots? → zuerst schließen (realisieren)
+    while(qty>1e-9 && lots.length && lots[0].side!==side){
+      const lot=lots[0];
+      const q=Math.min(qty,lot.q);
+      // Long-Lot per Verkauf: Erlös−Einstand. Short-Lot per Kauf: Short-Erlös−Rückkauf.
+      const rr = lot.side==="long"
+        ? (q*ku - q*fps) - (q*lot.price + q*lot.fps)
+        : (q*lot.price - q*lot.fps) - (q*ku + q*fps);
+      r+=rr;
+      matched.push({q,price:lot.price});
+      lot.q-=q; qty-=q;
+      if(lot.q<=1e-9)lots.shift();
     }
+    if(matched.length){ realized+=r; perTx[t.id]={realized:r, matched, steuer:num(t.steuer)||0}; }
+    // Rest eröffnet neue Lots in Trade-Richtung
+    if(qty>1e-9) lots.push({q:qty, price:ku, fps, side});
   }
   // Steuer: standardmäßig NICHT eingerechnet (Kursbetrachtung vor Steuer).
   // Per Chip an der Position zuschaltbar — dann mindert sie Realisiert, Gesamt und hebt den Break-even.
   const steuerCounted=!!pos.steuerOn;
   if(steuerCounted) realized-=steuerSum;
-  const openQty=lots.reduce((s,l)=>s+l.q,0);
-  const openCost=lots.reduce((s,l)=>s+l.q*(l.price+l.fps),0);
+  const longLots=lots.filter(l=>l.side==="long");
+  const openQty=longLots.reduce((s,l)=>s+l.q,0) - lots.filter(l=>l.side==="short").reduce((s,l)=>s+l.q,0);
+  const openCost=longLots.reduce((s,l)=>s+l.q*(l.price+l.fps),0);   // nur Long-Bestand
   const avg=openQty>0?openCost/openQty:0;
+  if(openQty<-1e-9) oversell=true;   // endet netto leerverkauft → wahrscheinlich fehlende Kauf-Daten
   // Ausgeknockt/ausgelaufen (Yahoo führt es nicht mehr): wie im Depot beim Broker mit 0 € rechnen,
   // bis die echte Ausbuchung per TR-CSV kommt. Der letzte Kurs bleibt in den Daten stehen.
   const kurs=pos.kursDead?0:num(pos.kursAktuell);
@@ -524,7 +531,7 @@ function renderPos(p,m,idx){
       const wert=e.typ==="kauf"?-(st*ku+ge):(st*ku-ge);
       const r=m.perTx[e.id];
       let extra="";
-      if(e.typ==="verkauf"&&r){
+      if(r&&r.matched.length){
         const parts=r.matched.map(x=>`<span class="nb">${numf.format(x.q)}@${feur(x.price)}</span>`).join(" + ");
         extra=` · <span class="nb">FIFO:</span> ${parts||"–"} <span class="nb">→ <b class="${cls(r.realized)}">${signEur(r.realized)}</b></span>`;
       }
