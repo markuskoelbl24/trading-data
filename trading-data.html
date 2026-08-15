@@ -304,7 +304,7 @@ function compute(pos){
   const curVal=hasKurs?openQty*kurs:0;
   const unreal=hasKurs?curVal-openCost:0;
   const divs=(pos.div||[]).reduce((s,d)=>s+ (num(d.netto)||0),0);
-  const divCounted=!pos.divOff;   // Dividende zählt standardmäßig mit; pro Position abwählbar
+  const divCounted=!pos.divOff && !state.settings.divGlobalOff;   // global aus ODER pro Position abwählbar
   const gesamt=realized+(hasKurs?unreal:0)+(divCounted?divs:0);
   // Zeit & Jahresrendite
   const dates=tx.map(t=>t.datum).filter(Boolean).sort();
@@ -361,7 +361,7 @@ function render(){
       <div class="kpi"><div class="k">Unrealisiert</div><div class="v ${cls(tUnreal)}">${signEur(tUnreal)}</div></div>
       <div class="kpi"><div class="k">Gesamt</div><div class="v ${cls(tGes)}">${signEur(tGes)}</div></div>
     </div>
-    <div class="hint" style="margin-top:8px">Offen investiert <b style="color:var(--txt)">${feur(tCur)}</b>${tDiv?` · Dividenden gesamt ${feur(tDiv)} · zählt in „Gesamt" mit${tDivOff?` <span class="red">(${feur(tDivOff)} pro Wert abgewählt)</span>`:""}`:""}</div>`;
+    <div class="hint" style="margin-top:8px">Offen investiert <b style="color:var(--txt)">${feur(tCur)}</b>${tDiv?` · Dividenden gesamt ${feur(tDiv)} · <button class="divchip ${state.settings.divGlobalOff?"off":""}" onclick="toggleDivGlobal()" title="Alle Dividenden in Gesamt ein-/ausrechnen"><span class="cbox">${state.settings.divGlobalOff?"":"✓"}</span> in „Gesamt"</button>${tDivOff&&!state.settings.divGlobalOff?` <span class="red">(${feur(tDivOff)} pro Wert abgewählt)</span>`:""}`:""}</div>`;
 
   // Offene vs. geschlossene Positionen trennen (geschlossen = alles verkauft, aber es gab Buchungen)
   const openIdx=[], closedIdx=[];
@@ -584,6 +584,7 @@ function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;","
 
 /* ---------- Kurs schnell setzen ---------- */
 function toggleDivOff(pid){const p=find(pid);if(!p)return;p.divOff=!p.divOff;touch(p);save();render();syncPushLater();}
+function toggleDivGlobal(){state.settings.divGlobalOff=!state.settings.divGlobalOff;state.settings.divGlobalAt=Date.now();save();render();syncPushLater();}
 function toggleSteuer(pid){const p=find(pid);if(!p)return;p.steuerOn=!p.steuerOn;touch(p);save();render();syncPushLater();}
 function find(pid){return state.positions.find(p=>p.id===pid);}
 
@@ -799,7 +800,8 @@ function u(o){return (o&&o._u)||0;}
 
 // Gesynct werden Positionen + Tombstones + der Zuklapp-Zustand (KEINE Token/Keys)
 function syncPayload(){return {positions:state.positions, tombstones:state.tombstones||{},
-  collapsed:state.settings.collapsed||{}, collapsedAt:state.settings.collapsedAt||0, syncedAt:Date.now()};}
+  collapsed:state.settings.collapsed||{}, collapsedAt:state.settings.collapsedAt||0,
+  divGlobalOff:!!state.settings.divGlobalOff, divGlobalAt:state.settings.divGlobalAt||0, syncedAt:Date.now()};}
 
 // Zwei Listen (tx bzw. div) nach id + Änderungszeit + Tombstones zusammenführen
 function mergeList(a,b,tomb){
@@ -838,7 +840,9 @@ function mergeStates(local,remote){
   // Zuklapp-Zustand: die zuletzt geänderte Ansicht gewinnt (Last-Writer-Wins per Zeitstempel)
   const lAt=local.collapsedAt||0, rAt=remote.collapsedAt||0;
   const collapsed = rAt>lAt ? (remote.collapsed||{}) : (local.collapsed||{});
-  return {positions, tombstones:tomb, collapsed, collapsedAt:Math.max(lAt,rAt)};
+  const dAt=Math.max(local.divGlobalAt||0, remote.divGlobalAt||0);
+  const divGlobalOff = (remote.divGlobalAt||0)>(local.divGlobalAt||0) ? !!remote.divGlobalOff : !!local.divGlobalOff;
+  return {positions, tombstones:tomb, collapsed, collapsedAt:Math.max(lAt,rAt), divGlobalOff, divGlobalAt:dAt};
 }
 
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -876,9 +880,11 @@ async function fullSync(manual){
     for(let attempt=0; attempt<5 && !done; attempt++){
       const {data:remote,sha}=await ghGet();     // cache-umgehend → aktuelle sha
       const merged=mergeStates({positions:state.positions,tombstones:state.tombstones,
-        collapsed:state.settings.collapsed,collapsedAt:state.settings.collapsedAt}, remote);
+        collapsed:state.settings.collapsed,collapsedAt:state.settings.collapsedAt,
+        divGlobalOff:state.settings.divGlobalOff,divGlobalAt:state.settings.divGlobalAt}, remote);
       state.positions=merged.positions; state.tombstones=merged.tombstones;
       state.settings.collapsed=merged.collapsed; state.settings.collapsedAt=merged.collapsedAt;
+      state.settings.divGlobalOff=merged.divGlobalOff; state.settings.divGlobalAt=merged.divGlobalAt;
       save(); render();
       try{ await ghPut(syncPayload(), sha); done=true; }
       catch(e){ lastErr=e; if(e.status===409){ await sleep(500); continue; } throw e; } // sha veraltet → neu holen
@@ -1214,18 +1220,30 @@ function tdBuildPlan(text){
   for(const p of state.positions){ const bk=(p.broker||"TR"); if(p.isin)knownIsin.add(bk+"|"+p.isin); const k=tdNorm(p.titel); if(k)knownName.add(bk+"|"+k); }
   const isinMap=state.settings.isinMap||{};
   // Netto-Stück je Symbol (Kauf +, Verkauf − stehen so in der CSV) → noch gehalten?
-  const net={}; for(const r of rows){ const isin=(r.symbol||"").trim(); if(!isin)continue; const k=tdClassify(r); if(k==="kauf"||k==="verkauf")net[isin]=(net[isin]||0)+(tdCsvNum(r.shares)||0); }
+  // Knockout/Tilgung koppeln: WARRANT_EXERCISE bucht die Stücke aus, die TILG-Zeile zahlt aus.
+  // Rücknahmebetrag je ISIN+Datum sammeln → Kurs = Betrag / Stück (nicht pauschal 0!).
+  const redeem={}; for(const r of rows){ if((r.type||"").toUpperCase()==="TILG"){ const k=(r.symbol||"").trim()+"|"+(r.date||"").slice(0,10); redeem[k]=(redeem[k]||0)+(tdCsvNum(r.amount)||0); } }
+  const net={}; for(const r of rows){ const isin=(r.symbol||"").trim(); if(!isin)continue; const k=(r.type||"").toUpperCase()==="WARRANT_EXERCISE"?"verkauf":tdClassify(r); if(k==="kauf"||k==="verkauf")net[isin]=(net[isin]||0)+(tdCsvNum(r.shares)||0); }
   const cand=[]; const unknown={}; let skipped=0, noWP=0;
   for(const r of rows){
-    const kind=tdClassify(r); if(!kind){noWP++;continue;}
+    const ty=(r.type||"").toUpperCase();
+    if(ty==="TILG") continue;   // Auszahlung wird über den zugehörigen WARRANT_EXERCISE verbucht
+    const dt=(r.date||"").slice(0,10);
+    let kind, stueck, kurs;
+    if(ty==="WARRANT_EXERCISE"){
+      stueck=Math.abs(tdCsvNum(r.shares)||0); if(!stueck){noWP++;continue;}
+      kind="verkauf"; kurs=(redeem[(r.symbol||"").trim()+"|"+dt]||0)/stueck;   // Rücknahmepreis pro Stück
+    } else {
+      kind=tdClassify(r); if(!kind){noWP++;continue;}
+      stueck=Math.abs(tdCsvNum(r.shares)||0); kurs=Math.abs(tdCsvNum(r.price)||0);
+    }
     const trid=(r.transaction_id||"").trim();
     if(trid && seen.has(trid)){skipped++;continue;}
-    const isin=(r.symbol||"").trim(), name=(r.name||"").trim(), dt=(r.date||"").slice(0,10);
+    const isin=(r.symbol||"").trim(), name=(r.name||"").trim();
     const broker=(String(r.broker||"TR").toUpperCase().trim())||"TR";
     const isKnown = knownIsin.has(broker+"|"+isin) || knownName.has(broker+"|"+tdNorm(name)) || !!isinMap[isin];
     if(!isKnown){ if(!unknown[isin])unknown[isin]={isin,name,count:0,last:"",held:(net[isin]||0)>0.0001,broker}; unknown[isin].count++; if(dt>unknown[isin].last)unknown[isin].last=dt; }
-    cand.push({ isin, name, kind, trid, datum:dt, broker,
-      stueck:Math.abs(tdCsvNum(r.shares)||0), kurs:Math.abs(tdCsvNum(r.price)||0),
+    cand.push({ isin, name, kind, trid, datum:dt, broker, stueck, kurs,
       fee:Math.abs(tdCsvNum(r.fee)||0), tax:Math.abs(tdCsvNum(r.tax)||0), amount:Math.abs(tdCsvNum(r.amount)||0) }); }
   return {cand, unknown, skipped, noWP, total:rows.length, maxDate}; }
 // Kern: einmal simulieren (mutate=false → Vorschau auf Klon) bzw. anwenden (mutate=true → echter Zustand)
@@ -1253,8 +1271,7 @@ function tdSimulate(assign, mutate){
     if(c.kind==="dividende"){
       const m=(p.div||[]).find(d=>!used[p.id].has(d.id)&&!d.trid&&(d.datum||"").slice(0,10)===c.datum&&Math.abs((num(d.netto)||0)-c.amount)<0.02);
       if(m){ m.trid=c.trid; if(mutate)touch(m); used[p.id].add(m.id); backfill++; }
-      else if(isNew[p.id]||c.datum>(posMaxDate[p.id]||"")){ const d={id:uid(),datum:c.datum,netto:tdFmt(c.amount),notiz:"TR-Import",trid:c.trid,_u:now}; (p.div||(p.div=[])).push(d); used[p.id].add(d.id); added++; }
-      else skippedBaseline++;
+      else { const d={id:uid(),datum:c.datum,netto:tdFmt(c.amount),notiz:"TR-Import",trid:c.trid,_u:now}; (p.div||(p.div=[])).push(d); used[p.id].add(d.id); added++; }   // alle Dividenden (per trid dublettensicher)
     } else {
       const m=(p.tx||[]).find(t=>!used[p.id].has(t.id)&&!t.trid&&t.typ===c.kind&&(t.datum||"").slice(0,10)===c.datum&&Math.abs((num(t.stueck)||0)-c.stueck)<0.001&&Math.abs((num(t.kurs)||0)-c.kurs)<Math.max(0.02,c.kurs*0.01));
       if(m){ if(c.tax)m.steuer=tdFmt(c.tax); if(c.fee&&!(num(m.gebuehr)>0))m.gebuehr=tdFmt(c.fee); m.trid=c.trid; if(mutate)touch(m); used[p.id].add(m.id); backfill++; }
