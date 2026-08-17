@@ -875,6 +875,8 @@ async function ghPut(payload, sha){
   try{ return JSON.parse(txt).content.sha; }catch(e){ return null; }
 }
 
+// Vergleicht zwei Sync-Nutzlasten ohne den volatilen Zeitstempel → true, wenn inhaltlich gleich
+function _syncUnchanged(a,b){ if(!a||!b) return false; const n=o=>{const x={...o}; delete x.syncedAt; return JSON.stringify(x);}; try{ return n(a)===n(b); }catch(e){ return false; } }
 // Voll-Sync: holen → mergen → zurückschreiben; bei sha-Konflikt (409) mit frischer sha erneut versuchen
 async function fullSync(manual){
   if(syncBusy || !syncReady()){ if(manual&&!syncReady())alert("Bitte zuerst Repo + Token im Backup-Menü eintragen."); return; }
@@ -892,7 +894,9 @@ async function fullSync(manual){
       state.settings.divGlobalOff=merged.divGlobalOff; state.settings.divGlobalAt=merged.divGlobalAt;
       state.settings.steuerGlobalOn=merged.steuerGlobalOn; state.settings.steuerGlobalAt=merged.steuerGlobalAt;
       save(); render();
-      try{ await ghPut(syncPayload(), sha); done=true; }
+      const pl=syncPayload();
+      if(_syncUnchanged(pl, remote)){ done=true; break; }   // nichts geändert → kein Commit (spart Leer-Commits)
+      try{ await ghPut(pl, sha); done=true; }
       catch(e){ lastErr=e; if(e.status===409){ await sleep(500); continue; } throw e; } // sha veraltet → neu holen
     }
     if(!done) throw lastErr||new Error("Konflikt nach mehreren Versuchen");
