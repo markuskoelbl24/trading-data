@@ -184,6 +184,7 @@
 
 <div class="fab">
   <button class="btn" onclick="openPos()">+ Position</button>
+  <button class="btn sec" onclick="openCash()">+ Cash</button>
 </div>
 
 <div class="overlay" id="overlay"><div class="sheet" id="sheet"></div></div>
@@ -241,6 +242,7 @@ const pct=new Intl.NumberFormat("de-DE",{maximumFractionDigits:1});
 const numf=new Intl.NumberFormat("de-DE",{maximumFractionDigits:4});
 const _fmtCache={EUR:eur};
 let _dispCur="EUR";   // Anzeige-Währung des gerade gerenderten Blocks (Position nativ, Summen in EUR)
+let _depotWert=0;     // Depotwert inkl. Cash (in EUR) — Bezugsgröße für den Anteil je Position
 function _cf(cur){ cur=String(cur||"EUR").toUpperCase(); if(!/^[A-Z]{3}$/.test(cur))cur="EUR"; let f=_fmtCache[cur]; if(!f){ try{ f=_fmtCache[cur]=new Intl.NumberFormat("de-DE",{style:"currency",currency:cur,maximumFractionDigits:2}); }catch(e){ f=_fmtCache[cur]=eur; } } return f; }
 function emoney(n){ return _cf(_dispCur).format(n); }
 function feur(n){return (n==null||isNaN(n))?"–":emoney(n);}
@@ -253,6 +255,16 @@ const today=()=>new Date().toISOString().slice(0,10);
 
 /* ---------- FIFO-Kern ---------- */
 function compute(pos){
+  // Cash-Konto: kein FIFO, kein Break-even — nur Saldo (+ Zinsen als „Dividende")
+  if(pos.cash){
+    const bal=num(pos.cashBetrag)||0;
+    const divs=(pos.div||[]).reduce((s,d)=>s+(num(d.netto)||0),0);
+    const divCounted=!pos.divOff && !state.settings.divGlobalOff;
+    return {tx:[],realized:0,openQty:0,openCost:0,avg:0,curVal:bal,unreal:0,divs,
+      gesamt:(divCounted?divs:0),hasKurs:true,oversell:false,buyCostAll:0,
+      gesamtPct:NaN,unrealPct:NaN,jahr:NaN,first:"",last:"",closed:false,days:0,perTx:{},kurs:bal,
+      erstEinstieg:NaN,breakEven:NaN,beDelta:NaN,bePct:NaN,steuer:0,steuerCounted:false,isCash:true};
+  }
   // Transaktionen chronologisch (stabil nach Eingabereihenfolge)
   const tx=(pos.tx||[]).map((t,i)=>({...t,_i:i}))
     .sort((a,b)=> (a.datum<b.datum?-1:a.datum>b.datum?1:a._i-b._i));
@@ -339,11 +351,14 @@ function render(){
     return;
   }
   // Portfolio-Summe
-  let tReal=0,tUnreal=0,tDiv=0,tDivOff=0,tCur=0,tGes=0,tSteuer=0;
+  let tReal=0,tUnreal=0,tDiv=0,tDivOff=0,tCur=0,tGes=0,tSteuer=0,tCash=0;
   const _fx=state.settings.fxRates||{};   // EUR je 1 Einheit Fremdwährung (aus letztem Kurs-Abruf)
   const metrics=state.positions.map(p=>{const m=compute(p);
     const cur=(p.currency||"EUR").toUpperCase(); const rate=cur==="EUR"?1:(_fx[cur]>0?_fx[cur]:1); m._eur=rate;
-    tReal+=m.realized*rate;tDiv+=m.divs*rate;if(p.divOff)tDivOff+=m.divs*rate;tSteuer+=m.steuer*rate;if(m.hasKurs){tUnreal+=m.unreal*rate;tCur+=m.curVal*rate;}tGes+=m.gesamt*rate;return m;});
+    tReal+=m.realized*rate;tDiv+=m.divs*rate;if(p.divOff)tDivOff+=m.divs*rate;tSteuer+=m.steuer*rate;
+    if(m.isCash){ tCash+=m.curVal*rate; } else if(m.hasKurs){ tUnreal+=m.unreal*rate; tCur+=m.curVal*rate; }
+    tGes+=m.gesamt*rate;return m;});
+  _depotWert=tCur+tCash;   // Bezugsgröße für den Prozentanteil je Position
   const hasSym=metrics.some((m,i)=>(state.positions[i].symbol||"").trim()&&m.openQty>0);
   const upd=state.settings.pricesUpdated;
   total.innerHTML=`
@@ -361,7 +376,7 @@ function render(){
       <div class="kpi"><div class="k">Unrealisiert</div><div class="v ${cls(tUnreal)}">${signEur(tUnreal)}</div></div>
       <div class="kpi"><div class="k">Gesamt</div><div class="v ${cls(tGes)}">${signEur(tGes)}</div></div>
     </div>
-    <div class="hint" style="margin-top:8px">Offen investiert <b style="color:var(--txt)">${feur(tCur)}</b>${tDiv?` · Dividenden gesamt ${feur(tDiv)} · <button class="divchip ${state.settings.divGlobalOff?"off":""}" onclick="toggleDivGlobal()" title="Alle Dividenden in Gesamt ein-/ausrechnen"><span class="cbox">${state.settings.divGlobalOff?"":"✓"}</span> in „Gesamt"</button>${tDivOff&&!state.settings.divGlobalOff?` <span class="red">(${feur(tDivOff)} pro Wert abgewählt)</span>`:""}`:""}${tSteuer?` · Steuer ${feur(tSteuer)} · <button class="divchip ${state.settings.steuerGlobalOn?"":"off"}" onclick="toggleSteuerGlobal()" title="Bereits einbehaltene Steuer (v.a. TR) in Gesamt abziehen — grob, IBKR-Steuer fehlt"><span class="cbox">${state.settings.steuerGlobalOn?"✓":""}</span> in „Gesamt"</button>`:""}</div>`;
+    <div class="hint" style="margin-top:8px">Investiert <b style="color:var(--txt)">${feur(tCur)}</b>${tCash?` · Cash <b style="color:var(--txt)">${feur(tCash)}</b> · Depotwert <b style="color:var(--txt)">${feur(tCur+tCash)}</b>`:""}${tDiv?` · Dividenden gesamt ${feur(tDiv)} · <button class="divchip ${state.settings.divGlobalOff?"off":""}" onclick="toggleDivGlobal()" title="Alle Dividenden in Gesamt ein-/ausrechnen"><span class="cbox">${state.settings.divGlobalOff?"":"✓"}</span> in „Gesamt"</button>${tDivOff&&!state.settings.divGlobalOff?` <span class="red">(${feur(tDivOff)} pro Wert abgewählt)</span>`:""}`:""}${tSteuer?` · Steuer ${feur(tSteuer)} · <button class="divchip ${state.settings.steuerGlobalOn?"":"off"}" onclick="toggleSteuerGlobal()" title="Bereits einbehaltene Steuer (v.a. TR) in Gesamt abziehen — grob, IBKR-Steuer fehlt"><span class="cbox">${state.settings.steuerGlobalOn?"✓":""}</span> in „Gesamt"</button>`:""}</div>`;
 
   // Offene vs. geschlossene Positionen trennen (geschlossen = alles verkauft, aber es gab Buchungen)
   const openIdx=[], closedIdx=[];
@@ -545,7 +560,11 @@ function renderPos(p,m,idx){
   const collapsed=(state.settings.collapsed||{})[p.id];
   const stopBadge = p.stop?` <span class="badge${belowStop?" badge-red":""}">Stop ${feur(num(p.stop))}</span>`:"";
   const gesWrap = `<span class="ph-ges">Gesamt ${gesHtml(m)}</span>`;
-  const subLeft = m.openQty>0 ? `<span>Position <b>${feur(m.curVal)}</b></span> ${gesWrap}` : `<span>Geschlossen</span> ${gesWrap}`;
+  // Anteil am Depotwert (inkl. Cash) — nur wo es einen Wert gibt
+  const anteil = (_depotWert>0 && (m.isCash||m.hasKurs) && m.curVal>0)
+    ? ` <span class="badge">${pct.format(m.curVal*(m._eur||1)/_depotWert*100)} %</span>` : "";
+  const subLeft = m.isCash ? `<span>Cash <b>${feur(m.curVal)}</b></span>${m.divs?` ${gesWrap}`:""}`
+    : m.openQty>0 ? `<span>Position <b>${feur(m.curVal)}</b></span> ${gesWrap}` : `<span>Geschlossen</span> ${gesWrap}`;
   const isDead = !!p.kursDead && m.openQty>0;   // Yahoo führt das Papier nicht mehr → zählt mit 0 €
   const soft = isDead || !(p.symbol||"").trim();  // 0 nach Knock-out bzw. Kurs von Hand → grau statt weiß
   const deadBadge = isDead?` <span class="badge badge-red">kein Kurs</span>`:"";
@@ -554,12 +573,15 @@ function renderPos(p,m,idx){
     <div class="pos-head" onclick="toggleCollapse('${p.id}')">
       <div class="ph-left">
         <div class="titel">${esc(p.titel||"(ohne Titel)")}${p.broker?` <span class="badge">${esc(p.broker)}</span>`:""}${deadBadge}<span class="chev">${collapsed?"▸":"▾"}</span></div>
-        <div class="ph-sub">${subLeft}${stopBadge}</div>
+        <div class="ph-sub">${subLeft}${anteil}${stopBadge}</div>
       </div>
       ${right}
       <button class="txedit ph-edit" onclick="event.stopPropagation();openPos('${p.id}')">✎</button>
     </div>
     <div class="pos-body"${collapsed?' style="display:none"':''}>
+      ${m.isCash?`<div class="meta"><span>Guthaben <b style="color:var(--txt)">${feur(m.curVal)}</b></span>${m.divs?` · <span>Zinsen ${feur(m.divs)}</span>`:""}</div>
+      <div class="pos-actions"><button class="btn sm" onclick="openDiv('${p.id}')">+ Zins</button>
+        <button class="btn sec sm" onclick="openCash('${p.id}')">Bearbeiten</button></div>`:`
       ${m.openQty>0&&!isNaN(m.erstEinstieg)?esBar(m):""}
       ${kpiBlock(m)}
       <div class="meta">
@@ -575,7 +597,7 @@ function renderPos(p,m,idx){
         <button class="btn sec sm" onclick="openDiv('${p.id}')">+ Dividende</button>
         ${isDead?`<button class="btn sec sm" onclick="koAusbuchen('${p.id}')">Wertlos ausbuchen</button>`:""}
       </div>
-      <details data-pid="${p.id}" ${openDetails.has(p.id)?"open":""}><summary>Buchungen (${allEntries.length})</summary>${txHtml}</details>
+      <details data-pid="${p.id}" ${openDetails.has(p.id)?"open":""}><summary>Buchungen (${allEntries.length})</summary>${txHtml}</details>`}
     </div>
   `;
   return el;
@@ -995,6 +1017,40 @@ function openPos(pid){
       <button class="btn sec" onclick="closeSheet()">Abbr.</button>
       <button class="btn" onclick="savePos('${p?p.id:""}')">Speichern</button>
     </div>`);
+}
+/* Cash-Konto: bewusst eine eigene, schlanke Maske — Cash hat weder Stückzahl,
+   Ticker noch Break-even. Zinsen laufen über die vorhandene Dividenden-Liste. */
+function openCash(pid){
+  const p=pid?find(pid):null;
+  openSheet(`
+    <h2>${p?"Cash bearbeiten":"Cash-Konto"}</h2>
+    <div class="two">
+      <div class="field"><label>Bezeichnung</label><input id="f_ctitel" value="${p?esc(p.titel||""):""}" placeholder="z.B. Verrechnungskonto"></div>
+      <div class="field"><label>Broker (optional)</label><input id="f_cbroker" value="${p?esc(p.broker||""):""}" placeholder="z.B. TR oder IBKR"></div>
+    </div>
+    <div class="two">
+      <div class="field"><label>Guthaben</label><input id="f_cbetrag" inputmode="decimal" value="${p?esc(p.cashBetrag||""):""}" placeholder="z.B. 1.250,00"></div>
+      <div class="field"><label>Währung</label><input id="f_ccur" value="${p?esc(p.currency||"EUR"):"EUR"}" placeholder="EUR"></div>
+    </div>
+    <div class="field"><label>Notiz</label><input id="f_cnotiz" value="${p?esc(p.notiz||""):""}"></div>
+    <div class="hint">Zählt in „Depotwert" und in die Prozentanteile, nicht in Realisiert/Unrealisiert. Zinsen später per <b>+ Zins</b> erfassen.</div>
+    <div class="sheet-actions">
+      ${p?`<button class="del" onclick="delPos('${p.id}')">Löschen</button>`:""}
+      <button class="btn sec" onclick="closeSheet()">Abbr.</button>
+      <button class="btn" onclick="saveCash('${p?p.id:""}')">Speichern</button>
+    </div>`);
+}
+function saveCash(pid){
+  const titel=val("f_ctitel").trim();
+  if(!titel){alert("Bitte eine Bezeichnung angeben.");return;}
+  let p=pid?find(pid):null;
+  if(!p){p={id:uid(),tx:[],div:[],cash:true};state.positions.push(p);}
+  p.cash=true; p.titel=titel; p.cashBetrag=val("f_cbetrag").trim();
+  p.currency=(val("f_ccur").trim()||"EUR").toUpperCase();
+  const bk=val("f_cbroker").trim(); if(bk)p.broker=bk; else delete p.broker;
+  p.notiz=val("f_cnotiz").trim(); p.symbol="";
+  touch(p);
+  save();closeSheet();render();syncPushLater();
 }
 function savePos(pid){
   const titel=val("f_titel").trim();
