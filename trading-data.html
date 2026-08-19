@@ -652,8 +652,13 @@ async function proxyJSON(url){
   const errs=[];
   for(const p of proxyChain()){
     let r;
-    try{ r=await fetch(p.mk(url),{cache:"no-store"}); }
-    catch(e){ errs.push(p.name+": "+(e.name==="TypeError"?"nicht erreichbar":(e.name||"Fehler"))); continue; }
+    // Zeitlimit je Proxy: ein hängender Gratis-Proxy blockierte sonst die ganze Kette
+    // (Abruf lief minutenlang ins Leere, statt den nächsten zu probieren).
+    const ac=("AbortController" in window)?new AbortController():null;
+    const tmr=ac?setTimeout(()=>ac.abort(),12000):null;
+    try{ r=await fetch(p.mk(url),{cache:"no-store",signal:ac?ac.signal:undefined}); }
+    catch(e){ errs.push(p.name+": "+(e.name==="AbortError"?"Zeitüberschreitung":e.name==="TypeError"?"nicht erreichbar":(e.name||"Fehler"))); continue; }
+    finally{ if(tmr)clearTimeout(tmr); }
     if(!r.ok){
       const t=await r.text().catch(()=>"");
       if(yahooDead(t)) throw deadErr();          // klare Absage → Kette abbrechen statt 4× dasselbe zu fragen
@@ -687,6 +692,31 @@ async function yahooQuote(sym){
   return {price:+m.regularMarketPrice, cur:m.currency||"EUR", time:(m.regularMarketTime?m.regularMarketTime*1000:0),
     prev:(m.chartPreviousClose!=null?m.chartPreviousClose:(m.previousClose!=null?m.previousClose:null))};
 }
+
+/* Sammel-Abruf: EIN Aufruf für viele Ticker statt einer pro Ticker — der Gratis-Proxy
+   bricht bei ~50 Einzelabrufen hinten weg (Positionen ohne Kurs). „spark" liefert aber
+   keine Währung, deshalb merken wir sie uns je Ticker (gelernt aus dem Einzel-Abruf). */
+function symCurMap(){ return state.settings.symCur||(state.settings.symCur={}); }
+function seedSymCur(){                     // aus vorhandenen Kursen lernen, damit der erste Lauf schon bündelt
+  const m=symCurMap();
+  for(const p of state.positions){
+    const s=(p.symbol||"").trim(); if(!s||m[s])continue;
+    if(p.kursAktuell) m[s]=((p.fxFrom||"").toUpperCase())||((p.currency||"EUR").toUpperCase());
+  }
+}
+async function yahooSpark(syms){
+  const b=await yahooJSON("/v8/finance/spark?symbols="+syms.map(encodeURIComponent).join(",")+"&range=1d&interval=1d");
+  const out={};
+  for(const s of syms){
+    const d=b&&b[s]; if(!d)continue;
+    const cl=(d.close||[]).filter(x=>x!=null);
+    if(!cl.length)continue;
+    const ts=d.timestamp||[];
+    out[s]={price:+cl[cl.length-1], prev:(d.chartPreviousClose!=null?+d.chartPreviousClose:null),
+            time:(ts.length?ts[ts.length-1]*1000:0)};
+  }
+  return out;
+}
 // Zeigt, VON WANN der Kurs ist (Börsen-Zeitstempel) — heute = evtl. live (~15 Min verzögert), sonst Schlusskurs.
 function kursTimeLbl(ms){
   if(!ms) return "";
@@ -708,11 +738,25 @@ async function refreshPrices(auto){
   try{
     // Pro Symbol EINZELN → ein kaputter Ticker blockiert die anderen nicht.
     const quotes={}; const dead={}; const fail=[]; let diag="";   // diag = eine Proxy-Meldung im Klartext, nicht pro Ticker wiederholt
+    seedSymCur(); const symCur=symCurMap();
+    // 1) Gebündelt: alles mit bekannter Währung in wenigen Aufrufen (statt einer je Ticker)
+    const nachzuegler=[];
+    const known=syms.filter(s=>symCur[s]);
+    for(let i=0;i<known.length;i+=30){
+      const teil=known.slice(i,i+30);
+      try{
+        const sp=await yahooSpark(teil);
+        for(const s of teil){ if(sp[s]) quotes[s]=Object.assign({cur:symCur[s]}, sp[s]); else nachzuegler.push(s); }
+      }catch(e){ nachzuegler.push(...teil); }                  // Bündel-Abruf hakt → einzeln nachholen
+      if(i+30<known.length) await sleep(200);
+    }
+    // 2) Einzeln: unbekannte Währung (einmalig, wird gemerkt) + Nachzügler
+    const rest=[...new Set(syms.filter(s=>!symCur[s]).concat(nachzuegler))];
     const CHUNK=4;   // wenige parallel → schont den Gratis-Proxy (zu viele auf einmal → TypeError)
-    for(let i=0;i<syms.length;i+=CHUNK){
-      await Promise.all(syms.slice(i,i+CHUNK).map(async sym=>{
+    for(let i=0;i<rest.length;i+=CHUNK){
+      await Promise.all(rest.slice(i,i+CHUNK).map(async sym=>{
         for(let a=0;a<3;a++){                                  // bis zu 3 Versuche (Proxy zickt gern kurz)
-          try{ quotes[sym]=await yahooQuote(sym); return; }
+          try{ const q=await yahooQuote(sym); quotes[sym]=q; symCur[sym]=(q.cur||"EUR").toUpperCase(); return; }
           catch(e){
             if(e&&e.dead){ dead[sym]=1; fail.push(sym+" — "+e.message); return; }   // Wiederholen sinnlos
             if(a<2){ await sleep(400); continue; }
@@ -720,8 +764,9 @@ async function refreshPrices(auto){
             else fail.push(sym+" — "+(e.message||"kein Kurs")); }
         }
       }));
-      if(i+CHUNK<syms.length) await sleep(200);                // kleine Pause zwischen den Bündeln
+      if(i+CHUNK<rest.length) await sleep(200);                // kleine Pause zwischen den Bündeln
     }
+    for(const s of syms) if(!quotes[s] && !dead[s] && !fail.some(f=>f.indexOf(s+" —")===0)) fail.push(s+" — kein Kurs (Ticker prüfen)");
     // Fremdwährungen → EUR (je Währung einmal, kostenlos ohne Key)
     const posCurs=state.positions.map(p=>(p.currency||"EUR").toUpperCase()).filter(c=>c&&c!=="EUR");
     const curs=[...new Set(Object.values(quotes).map(q=>q.cur).filter(c=>c&&c!=="EUR").concat(posCurs))];
