@@ -339,6 +339,37 @@ function compute(pos){
     erstEinstieg,breakEven,beDelta,bePct,steuer:steuerSum,steuerCounted};
 }
 
+/* ---------- Jahresauswertung ----------
+   Realisiert je Jahr = Summe der FIFO-Ergebnisse der Trades, die in dem Jahr GESCHLOSSEN
+   haben (perTx hängt am schließenden Trade). Unrealisiertes gibt es nur für heute — ein
+   Depotwert von Silvester 2024 ließe sich nur mit historischen Kursen rekonstruieren. */
+function yearsAvailable(){
+  const ys=new Set();
+  for(const p of state.positions){
+    for(const t of (p.tx||[])) if(t.datum) ys.add(String(t.datum).slice(0,4));
+    for(const d of (p.div||[])) if(d.datum) ys.add(String(d.datum).slice(0,4));
+  }
+  return [...ys].filter(y=>/^\d{4}$/.test(y)).sort();
+}
+function yearStats(y){
+  const fx=state.settings.fxRates||{};
+  let real=0,divs=0,steuer=0,trades=0;
+  for(const p of state.positions){
+    const cur=(p.currency||"EUR").toUpperCase();
+    const rate=cur==="EUR"?1:(fx[cur]>0?fx[cur]:1);
+    const m=compute(p);
+    for(const t of m.tx){
+      if(String(t.datum||"").slice(0,4)!==y) continue;
+      const r=m.perTx[t.id];
+      if(r&&r.matched&&r.matched.length){ real+=r.realized*rate; trades++; }
+      steuer+=(num(t.steuer)||0)*rate;
+    }
+    for(const d of (p.div||[])) if(String(d.datum||"").slice(0,4)===y) divs+=(num(d.netto)||0)*rate;
+  }
+  return {real,divs,steuer,trades};
+}
+function setJahr(y){ state.settings.jahr=y; save(); render(); }
+
 /* ---------- Render ---------- */
 function render(){
   _dispCur="EUR";   // Summen/Portfolio in EUR; je Positionskarte wird auf deren Währung gesetzt
@@ -371,11 +402,28 @@ function render(){
       <span class="hint" style="margin:0">${hasSym&&upd?`Zuletzt abgerufen: ${new Date(upd).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})} Uhr`:""}</span>
       <div class="spacer"></div>
       <span class="badge">${state.positions.length} Positionen</span></div>
-    <div class="kpis">
+    ${(()=>{                                   // Jahr gewählt → Jahres-Zahlen statt Depot-Zahlen
+      const jy=state.settings.jahr||"";
+      if(!jy) return `<div class="kpis">
       <div class="kpi"><div class="k">Realisiert (FIFO)</div><div class="v ${cls(tReal)}">${signEur(tReal)}</div></div>
       <div class="kpi"><div class="k">Unrealisiert</div><div class="v ${cls(tUnreal)}">${signEur(tUnreal)}</div></div>
       <div class="kpi"><div class="k">Gesamt</div><div class="v ${cls(tGes)}">${signEur(tGes)}</div></div>
+    </div>`;
+      const y=yearStats(jy);
+      return `<div class="kpis">
+      <div class="kpi"><div class="k">Realisiert ${jy}</div><div class="v ${cls(y.real)}">${signEur(y.real)}</div></div>
+      <div class="kpi"><div class="k">Dividenden ${jy}</div><div class="v ${cls(y.divs)}">${signEur(y.divs)}</div></div>
+      <div class="kpi"><div class="k">Steuer ${jy}</div><div class="v">${feur(y.steuer)}</div></div>
     </div>
+    <div class="hint" style="margin-top:6px">${y.trades} abgeschlossene Trade(s) in ${jy}. Unrealisierte Kursgewinne gibt es nur für heute — nicht rückwirkend je Jahr.</div>`;
+    })()}
+    ${(()=>{
+      const ys=yearsAvailable(); if(ys.length<2) return "";
+      const jy=state.settings.jahr||"";
+      return `<div class="sortsel" style="margin:10px 0 0"><span class="sl">Jahr</span><div class="sortseg">
+        <button class="${jy===""?"on":""}" onclick="setJahr('')">Gesamt</button>
+        ${ys.map(y=>`<button class="${jy===y?"on":""}" onclick="setJahr('${y}')">${y}</button>`).join("")}</div></div>`;
+    })()}
     <div class="hint" style="margin-top:8px">Investiert <b style="color:var(--txt)">${feur(tCur)}</b>${tCash?` · Cash <b style="color:var(--txt)">${feur(tCash)}</b> · Depotwert <b style="color:var(--txt)">${feur(tCur+tCash)}</b>`:""}${tDiv?` · Dividenden gesamt ${feur(tDiv)} · <button class="divchip ${state.settings.divGlobalOff?"off":""}" onclick="toggleDivGlobal()" title="Alle Dividenden in Gesamt ein-/ausrechnen"><span class="cbox">${state.settings.divGlobalOff?"":"✓"}</span> in „Gesamt"</button>${tDivOff&&!state.settings.divGlobalOff?` <span class="red">(${feur(tDivOff)} pro Wert abgewählt)</span>`:""}`:""}${tSteuer?` · Steuer ${feur(tSteuer)} · <button class="divchip ${state.settings.steuerGlobalOn?"":"off"}" onclick="toggleSteuerGlobal()" title="Bereits einbehaltene Steuer (v.a. TR) in Gesamt abziehen — grob, IBKR-Steuer fehlt"><span class="cbox">${state.settings.steuerGlobalOn?"✓":""}</span> in „Gesamt"</button>`:""}</div>`;
 
   // Offene vs. geschlossene Positionen trennen (geschlossen = alles verkauft, aber es gab Buchungen)
