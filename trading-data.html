@@ -87,7 +87,7 @@
     padding:2px 9px 2px 6px;font-size:12.5px;cursor:pointer;display:inline-flex;align-items:center;gap:5px;line-height:1.5}
   .divchip .cbox{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;
     border-radius:4px;border:1.5px solid var(--green);background:var(--green);color:#04120a;font-size:11px;font-weight:800}
-  .divchip.off{color:var(--muted)}
+  .divchip.off{color:var(--txt)}   /* nicht ausgrauen — sonst wirkt der Chip verschwunden */
   .divchip.off .cbox{background:transparent;border-color:var(--muted)}
   .closed-sec{margin-top:22px}
   .closed-sec>summary.closed-sum{margin:0 3px 2px;padding:6px 0}
@@ -533,7 +533,7 @@ function render(){
       y.fehlt?` · <span class="red">${y.fehlt} Position(en) ohne Jahresend-Kurs</span> — die Wertänderung ist dort noch nicht drin (Kurse werden ab jetzt je Jahr festgehalten).`:""}</div>`;
     })()}
 
-    <div class="hint" style="margin-top:8px">Investiert <b style="color:var(--txt)">${feur(tCur)}</b>${tCash?` · Cash <b style="color:var(--txt)">${feur(tCash)}</b> · Depotwert <b style="color:var(--txt)">${feur(tCur+tCash)}</b>`:""}${tDiv?` · Dividenden gesamt ${feur(tDiv)} · <button class="divchip ${state.settings.divGlobalOff?"off":""}" onclick="toggleDivGlobal()" title="Alle Dividenden in Gesamt ein-/ausrechnen"><span class="cbox">${state.settings.divGlobalOff?"":"✓"}</span> in „Gesamt"</button>${tDivOff&&!state.settings.divGlobalOff?` <span class="red">(${feur(tDivOff)} pro Wert abgewählt)</span>`:""}`:""}${tSteuer?` · Steuer ${feur(tSteuer)} · <button class="divchip ${state.settings.steuerGlobalOn?"":"off"}" onclick="toggleSteuerGlobal()" title="Bereits einbehaltene Steuer (v.a. TR) in Gesamt abziehen — grob, IBKR-Steuer fehlt"><span class="cbox">${state.settings.steuerGlobalOn?"✓":""}</span> in „Gesamt"</button>`:""}</div>`;
+    <div class="hint" style="margin-top:8px">Investiert <b style="color:var(--txt)">${feur(tCur)}</b>${tCash?` · Cash <b style="color:var(--txt)">${feur(tCash)}</b> · Depotwert <b style="color:var(--txt)">${feur(tCur+tCash)}</b>`:""}${tDiv?` · Dividenden gesamt ${feur(tDiv)} · <button class="divchip ${state.settings.divGlobalOff?"off":""}" onclick="toggleDivGlobal()" title="Alle Dividenden in Gesamt ein-/ausrechnen"><span class="cbox">${state.settings.divGlobalOff?"":"✓"}</span> in „Gesamt"</button>${tDivOff&&!state.settings.divGlobalOff?` (${feur(tDivOff)} pro Wert abgewählt)`:""}`:""}${tSteuer?` · Steuer ${feur(tSteuer)} · <button class="divchip ${state.settings.steuerGlobalOn?"":"off"}" onclick="toggleSteuerGlobal()" title="Bereits einbehaltene Steuer (v.a. TR) in Gesamt abziehen — grob, IBKR-Steuer fehlt"><span class="cbox">${state.settings.steuerGlobalOn?"✓":""}</span> in „Gesamt"</button>`:""}</div>`;
 
   // Offene vs. geschlossene Positionen trennen (geschlossen = alles verkauft, aber es gab Buchungen)
   const openIdx=[], closedIdx=[];
