@@ -115,6 +115,15 @@
   .sortsel{display:flex;align-items:center;gap:9px;margin:16px 3px 4px}
   .sortsel .sl{color:var(--muted);font-size:12px}
   .sortseg{display:inline-flex;background:var(--card2);border:1px solid var(--line);border-radius:9px;overflow:hidden}
+  /* Zeitraum-Reiter direkt neben der Überschrift — schmaler als die Sortier-Leiste,
+     und bei vielen Jahren am Handy seitlich schiebbar statt umbrechend. */
+  .yearseg{display:inline-flex;background:var(--card2);border:1px solid var(--line);border-radius:8px;
+    overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;
+    flex:0 1 auto;min-width:0}   /* nimmt nur den noetigen Platz, schiebt statt umzubrechen */
+  .yearseg::-webkit-scrollbar{display:none}
+  .yearseg button{background:transparent;color:var(--muted);font-size:11.5px;font-weight:600;
+    padding:4px 8px;border-radius:0;white-space:nowrap;border:0;flex:0 0 auto}
+  .yearseg button.on{background:var(--acc);color:#fff}
   .sortseg button{background:transparent;color:var(--muted);font-size:12.5px;font-weight:600;padding:6px 13px;border-radius:0}
   .sortseg button.on{background:var(--accent);color:#fff}
   /* Break-even-Leiste (Labels an Markern, zentriert) */
@@ -432,7 +441,12 @@ function render(){
   const hasSym=metrics.some((m,i)=>(state.positions[i].symbol||"").trim()&&m.openQty>0);
   const upd=state.settings.pricesUpdated;
   total.innerHTML=`
-    <div class="row"><b style="font-size:14px">Portfolio gesamt</b>
+    <div class="row"><b style="font-size:14px">Portfolio</b>${(()=>{
+        const ys=yearsAvailable(); if(!ys.length) return "";
+        const jy=state.settings.jahr||"";
+        return `<div class="yearseg"><button class="${jy===""?"on":""}" onclick="setJahr('')">Gesamt</button>`+
+          ys.map(y=>`<button class="${jy===y?"on":""}" onclick="setJahr('${y}')">${y}</button>`).join("")+`</div>`;
+      })()}
       <span id="syncStatus" class="lbl" style="font-size:11.5px;color:var(--muted)"></span>
       <div class="spacer"></div>
       ${syncReady()?`<button class="btn ghost" style="padding:5px 10px" onclick="fullSync(true)">⇅ Sync</button>`:""}
@@ -457,13 +471,7 @@ function render(){
     <div class="hint" style="margin-top:6px">${y.trades} abgeschlossene Trade(s) · Dividenden ${feur(y.divs)} · Steuer ${feur(y.steuer)}${
       y.fehlt?` · <span class="red">${y.fehlt} Position(en) ohne Jahresend-Kurs</span> — die Wertänderung ist dort noch nicht drin (Kurse werden ab jetzt je Jahr festgehalten).`:""}</div>`;
     })()}
-    ${(()=>{
-      const ys=yearsAvailable(); if(ys.length<2) return "";
-      const jy=state.settings.jahr||"";
-      return `<div class="sortsel" style="margin:10px 0 0"><span class="sl">Jahr</span><div class="sortseg">
-        <button class="${jy===""?"on":""}" onclick="setJahr('')">Gesamt</button>
-        ${ys.map(y=>`<button class="${jy===y?"on":""}" onclick="setJahr('${y}')">${y}</button>`).join("")}</div></div>`;
-    })()}
+
     <div class="hint" style="margin-top:8px">Investiert <b style="color:var(--txt)">${feur(tCur)}</b>${tCash?` · Cash <b style="color:var(--txt)">${feur(tCash)}</b> · Depotwert <b style="color:var(--txt)">${feur(tCur+tCash)}</b>`:""}${tDiv?` · Dividenden gesamt ${feur(tDiv)} · <button class="divchip ${state.settings.divGlobalOff?"off":""}" onclick="toggleDivGlobal()" title="Alle Dividenden in Gesamt ein-/ausrechnen"><span class="cbox">${state.settings.divGlobalOff?"":"✓"}</span> in „Gesamt"</button>${tDivOff&&!state.settings.divGlobalOff?` <span class="red">(${feur(tDivOff)} pro Wert abgewählt)</span>`:""}`:""}${tSteuer?` · Steuer ${feur(tSteuer)} · <button class="divchip ${state.settings.steuerGlobalOn?"":"off"}" onclick="toggleSteuerGlobal()" title="Bereits einbehaltene Steuer (v.a. TR) in Gesamt abziehen — grob, IBKR-Steuer fehlt"><span class="cbox">${state.settings.steuerGlobalOn?"✓":""}</span> in „Gesamt"</button>`:""}</div>`;
 
   // Offene vs. geschlossene Positionen trennen (geschlossen = alles verkauft, aber es gab Buchungen)
