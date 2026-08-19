@@ -114,6 +114,28 @@
   /* Sortier-Leiste */
   .sortsel{display:flex;align-items:center;gap:9px;margin:16px 3px 4px}
   .sortsel .sl{color:var(--muted);font-size:12px}
+  /* Fixierte Kopfleiste: erscheint erst, wenn der Portfolio-Block weggescrollt ist.
+     Bewusst nur die drei Kennzahlen + Suche — nicht der ganze Block. */
+  .sticky{position:fixed;left:0;right:0;top:0;z-index:60;display:flex;align-items:center;gap:10px;
+    padding:7px max(12px,env(safe-area-inset-right)) 7px max(12px,env(safe-area-inset-left));
+    background:rgba(15,18,22,.94);border-bottom:1px solid var(--line);
+    transform:translateY(-110%);transition:transform .16s ease}
+  @supports (backdrop-filter:blur(8px)){ .sticky{backdrop-filter:blur(8px)} }
+  .sticky.on{transform:none}
+  .skpi{display:flex;flex-direction:column;line-height:1.15;min-width:0}
+  .skpi .k{font-size:9.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+  .skpi .v{font-size:13px;font-weight:700;white-space:nowrap}
+  .skpis{display:flex;gap:14px;flex:1 1 auto;min-width:0;overflow:hidden}
+  .sticky input{flex:0 1 190px;min-width:0;background:var(--card2);border:1px solid var(--line);
+    color:var(--txt);border-radius:9px;padding:7px 10px;font-size:13px;display:none}
+  .sticky.q input{display:block}
+  .sticky.q .skpis{display:none}
+  .sfind{background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:9px;
+    padding:6px 10px;font-size:13px;flex:0 0 auto;cursor:pointer}
+  @media (min-width:700px){                      /* Am Rechner ist Platz: Feld gleich sichtbar */
+    .sticky input{display:block}
+    .sticky.q .skpis{display:flex}
+  }
   .sortseg{display:inline-flex;background:var(--card2);border:1px solid var(--line);border-radius:9px;overflow:hidden}
   /* Zeitraum-Reiter direkt neben der Überschrift — schmaler als die Sortier-Leiste,
      und bei vielen Jahren am Handy seitlich schiebbar statt umbrechend. */
@@ -188,6 +210,16 @@
   <button class="btn ghost" style="flex:none;display:inline-flex;align-items:center;gap:5px;padding:8px 13px;font-size:14px;color:#c3ccd6" onclick="openBackup()"><span style="font-size:19px;line-height:1">⚙︎</span>Setup</button>
 </div>
 
+<div class="sticky" id="sticky">
+  <div class="skpis">
+    <div class="skpi"><span class="k">Realisiert</span><span class="v" id="sk_r">–</span></div>
+    <div class="skpi"><span class="k">Unreal.</span><span class="v" id="sk_u">–</span></div>
+    <div class="skpi"><span class="k">Gesamt</span><span class="v" id="sk_g">–</span></div>
+  </div>
+  <input id="q" type="search" inputmode="search" placeholder="Position suchen…" autocomplete="off"
+         oninput="setQuery(this.value)" onkeydown="if(event.key==='Escape')clearQuery()">
+  <button class="sfind" onclick="toggleSearch()" aria-label="Suchen">🔍</button>
+</div>
 <div id="total" class="total"></div>
 <div id="list"></div>
 
@@ -418,6 +450,34 @@ function yearStats(y){
 }
 function setJahr(y){ state.settings.jahr=y; save(); render(); }
 
+/* Suche — bewusst flüchtig (nicht gespeichert, nicht gesynct): ein Filter, den man
+   nach dem Schließen der App nicht erklären muss. Trifft Titel, Ticker, Broker, ISIN, Branche. */
+let _q="";
+function normQ(x){ return String(x||"").toLowerCase().trim(); }
+function setQuery(v){ _q=normQ(v); render(); }
+function clearQuery(){ _q=""; const i=document.getElementById("q"); if(i)i.value=""; syncBar(); render(); }
+function toggleSearch(){
+  const bar=document.getElementById("sticky"), i=document.getElementById("q");
+  const an=!bar.classList.contains("q");
+  bar.classList.toggle("q",an);
+  if(an){ bar.classList.add("on"); i.focus(); }
+  else { clearQuery(); }
+}
+function matchesQuery(p){
+  if(!_q) return true;
+  return [p.titel,p.symbol,p.broker,p.isin,p.branche,p.notiz].some(v=>normQ(v).includes(_q));
+}
+/* Leiste einblenden, sobald der Portfolio-Block weggescrollt ist. Endzustand hängt an
+   der Klasse, nicht an einer Animation — bei eingefrorenen Animationen bleibt sie korrekt. */
+function syncBar(){
+  const bar=document.getElementById("sticky"), tot=document.getElementById("total");
+  if(!bar||!tot) return;
+  const weg = tot.getBoundingClientRect().bottom < 4;
+  bar.classList.toggle("on", weg || bar.classList.contains("q") || !!_q);
+}
+window.addEventListener("scroll", syncBar, {passive:true});
+window.addEventListener("resize", syncBar);
+
 /* ---------- Render ---------- */
 function render(){
   _dispCur="EUR";   // Summen/Portfolio in EUR; je Positionskarte wird auf deren Währung gesetzt
@@ -450,7 +510,8 @@ function render(){
       <span id="syncStatus" class="lbl" style="font-size:11.5px;color:var(--muted)"></span>
       <div class="spacer"></div>
       ${syncReady()?`<button class="btn ghost" style="padding:5px 10px" onclick="fullSync(true)">⇅ Sync</button>`:""}
-      ${hasSym?`<button id="refreshBtn" class="btn ghost" style="padding:5px 10px" onclick="refreshPrices()">⟳ Kurse</button>`:""}</div>
+      ${hasSym?`<button id="refreshBtn" class="btn ghost" style="padding:5px 10px" onclick="refreshPrices()">⟳ Kurse</button>`:""}
+      ${state.positions.length>8?`<button class="btn ghost" style="padding:5px 10px" onclick="toggleSearch()" aria-label="Suchen">🔍</button>`:""}</div>
     <div class="row" style="margin-top:2px">
       <span class="hint" style="margin:0">${hasSym&&upd?`Zuletzt abgerufen: ${new Date(upd).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})} Uhr`:""}</span>
       <div class="spacer"></div>
@@ -477,6 +538,7 @@ function render(){
   // Offene vs. geschlossene Positionen trennen (geschlossen = alles verkauft, aber es gab Buchungen)
   const openIdx=[], closedIdx=[];
   state.positions.forEach((p,idx)=>{
+    if(!matchesQuery(p)) return;                     // Suche filtert die Liste, nicht die Summen
     (metrics[idx].openQty<=1e-9 && metrics[idx].tx.length>0 ? closedIdx : openIdx).push(idx);
   });
   list.innerHTML="";
@@ -508,6 +570,25 @@ function render(){
     closedIdx.forEach(idx=>sec.appendChild(renderPos(state.positions[idx],metrics[idx],idx)));
     list.appendChild(sec);
   }
+  if(_q && !openIdx.length && !closedIdx.length){
+    list.innerHTML='<div class="empty-all">Nichts gefunden für „'+esc(_q)+'".<br>Gesucht wird in Titel, Ticker, Broker, ISIN, Branche und Notiz.</div>';
+  } else if(_q){
+    const t=document.createElement("div"); t.className="hint"; t.style.margin="10px 3px 0";
+    t.textContent=(openIdx.length+closedIdx.length)+" von "+state.positions.length+" Positionen — die Zahlen oben gelten weiter fürs ganze Depot.";
+    list.appendChild(t);
+  }
+  // Werte der fixierten Leiste nachziehen (Leiste selbst wird NICHT neu gebaut → Fokus bleibt)
+  const jy0=state.settings.jahr||"";
+  const _ys=jy0?yearStats(jy0):null;
+  const setv=(id,val,klass)=>{const e=document.getElementById(id); if(e){e.textContent=signEur(val); e.className="v "+cls(klass===undefined?val:klass);}};
+  if(document.getElementById("sk_r")){
+    setv("sk_r", _ys?_ys.real:tReal);
+    setv("sk_u", _ys?_ys.wert:tUnreal);
+    setv("sk_g", _ys?_ys.gesamt:tGes);
+    const lbls=document.querySelectorAll("#sticky .skpi .k");
+    if(lbls.length===3){ lbls[0].textContent=jy0?"Real. "+jy0:"Realisiert"; lbls[1].textContent=jy0?"Wertänd.":"Unreal."; lbls[2].textContent=jy0?"Gesamt "+jy0:"Gesamt"; }
+  }
+  syncBar();
   scheduleClamp();
 }
 
