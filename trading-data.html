@@ -1,22 +1,41 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Trading-Data (FIFO)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- IBM Plex: Mono fuer ALLE Zahlen (Ziffern stehen untereinander), Condensed fuer Spaltenkoepfe.
+     Faellt ohne Netz sauber auf Systemschriften zurueck. -->
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Condensed:wght@600&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:#0f1216; --card:#181d24; --card2:#1f2630; --line:#2a323d;
-    --txt:#e7ecf2; --muted:#8a95a3; --accent:#4c8bf5;
-    --green:#39c07a; --red:#f0554d; --amber:#e9b23a;
-    --radius:14px;
+    /* Kursblatt: Tinten-Navy als Papier, Messing als Akzent. Gruen/Rot bleiben die
+       einzigen weiteren Farben — sie tragen Bedeutung (Gewinn/Verlust), nichts sonst. */
+    --bg:#0e131a; --card:#161d26; --card2:#1c242e; --line:#2b3441; --rule:#333e4c;
+    --txt:#e9e6df; --muted:#8b95a2; --accent:#c2a15a;     /* Messing statt Standard-Blau */
+    --green:#3fa97a; --red:#d2544b; --amber:#e0813c;      /* Warnung klar getrennt vom Messing */
+    --radius:12px;
+    --f-sans:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --f-cond:"IBM Plex Sans Condensed","IBM Plex Sans",-apple-system,"Segoe UI",Roboto,sans-serif;
+    --f-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   }
+  /* Spaltenkopf wie im Kursblatt: schmal, versal, weit gesperrt, klein. */
+  .kpi .k,.skpi .k,.grp-title,.sortsel .sl,label,.esb-lab .n{
+    font-family:var(--f-cond);text-transform:uppercase;letter-spacing:.09em;font-weight:600}
+  /* Jede Zahl in Mono mit Tabellenziffern — Betraege stehen dadurch stellengenau untereinander. */
+  .kpi .v,.kpi .v2,.ph-kurs,.ph-day,.tx .amt,.skpi .v,.esb-lab .v,.esb-pct,.ph-sub b,.meta b,
+  .es-vals b,.total .v{
+    font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
+  /* Sichtbarer Tastatur-Fokus (fehlte bisher ganz). */
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+  @media (prefers-reduced-motion:reduce){ *{transition:none!important;animation:none!important} }
   *{box-sizing:border-box}
   html,body{margin:0;background:var(--bg);color:var(--txt);
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-    -webkit-text-size-adjust:100%}
+    font-family:var(--f-sans);-webkit-text-size-adjust:100%}
   body{padding:14px 12px calc(96px + env(safe-area-inset-bottom));max-width:920px;margin:0 auto}
   h1{font-size:20px;margin:2px 0 2px}
   .sub{color:var(--muted);font-size:12.5px;margin-bottom:14px;line-height:1.4}
   button{font:inherit;cursor:pointer;border:none;border-radius:10px}
-  .btn{background:var(--accent);color:#fff;padding:10px 14px;font-weight:600}
+  .btn{background:var(--accent);color:#17120a;padding:10px 14px;font-weight:600}
   .btn.sec{background:var(--card2);color:var(--txt);border:1px solid var(--line)}
   .btn.ghost{background:transparent;color:var(--muted);border:1px solid var(--line);padding:7px 10px;font-size:13px}
   .btn.sm{padding:6px 10px;font-size:13px}
@@ -29,14 +48,14 @@
   .pos{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
     padding:13px 13px 11px;margin:12px 0}
   .pos-head{display:flex;align-items:flex-start;gap:10px}
-  .badge{font-size:11px;color:var(--muted);background:var(--card2);border:1px solid var(--line);
+  .badge{font-family:var(--f-cond);letter-spacing:.06em;font-variant-numeric:tabular-nums;font-size:11px;color:var(--muted);background:var(--card2);border:1px solid var(--line);
     padding:2px 8px;border-radius:999px;white-space:nowrap}
   .titel{font-size:17px;font-weight:700;line-height:1.15}
-  .kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin:11px 0 4px}
-  .kpi{background:var(--card2);border:1px solid var(--line);border-radius:11px;padding:9px 8px}
-  .kpi .k{font-size:11px;color:var(--muted);margin-bottom:3px}
-  .kpi .v{font-size:clamp(13px,4.2vw,15.5px);font-weight:700;white-space:nowrap;letter-spacing:-.2px}
-  .kpi .v2{font-size:11.5px;font-weight:600;color:var(--muted)}
+  .kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:0 14px;margin:13px 0 4px}
+  .kpi{background:transparent;border:0;border-top:1px solid var(--rule);border-radius:0;padding:7px 0 0}
+  .kpi .k{font-size:9.5px;color:var(--muted);margin-bottom:4px}
+  .kpi .v{font-size:clamp(13px,4.2vw,15.5px);font-weight:600;white-space:nowrap;letter-spacing:-.1px}
+  .kpi .v2{font-size:11px;font-weight:500;color:var(--muted);margin-top:1px}
   .meta{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12.5px;color:var(--muted);margin:8px 2px 2px}
   .meta b{color:var(--txt);font-weight:600}
   .einstand{margin:10px 0 2px;padding:9px 11px 11px;background:var(--card2);
@@ -60,6 +79,8 @@
   .es-mark.dot{top:2px;width:15px;height:15px;border-radius:50%;border:3px solid var(--card2)}
   .es-mark.dot.up{background:var(--green)} .es-mark.dot.down{background:var(--red)}
   .pos-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:11px}
+  .pos-actions .btn{background:transparent;color:var(--accent);border:1px solid var(--accent);font-weight:600}
+  .pos-actions .btn.sec{color:var(--txt);border-color:var(--line)}
   details{margin-top:9px;border-top:1px dashed var(--line);padding-top:8px}
   summary{cursor:pointer;color:var(--muted);font-size:13px;list-style:none;user-select:none}
   summary::-webkit-details-marker{display:none}
@@ -69,9 +90,10 @@
     padding:7px 2px;border-bottom:1px solid var(--line);font-size:13px}
   .tx:last-child{border-bottom:none}
   .tx .tag{font-size:11px;font-weight:700;padding:2px 7px;border-radius:6px;white-space:nowrap}
-  .tag.kauf{background:rgba(76,139,245,.16);color:#8fb6ff}
-  .tag.verkauf{background:rgba(233,178,58,.16);color:#f0cd75}
-  .tag.div{background:rgba(57,192,122,.16);color:#7fe0ac}
+  .tx .tag{font-family:var(--f-cond);text-transform:uppercase;letter-spacing:.07em}
+  .tag.kauf{background:transparent;color:var(--muted);border:1px solid var(--rule)}
+  .tag.verkauf{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+  .tag.div{background:transparent;color:var(--green);border:1px solid var(--green)}
   .tx .desc{color:var(--muted);font-size:12px;min-width:0}
   .tx .desc .nb{white-space:nowrap}
   .tx .amt{font-weight:700;text-align:right;white-space:nowrap}
@@ -83,7 +105,7 @@
   .pos.stop{border-color:var(--red)}
   .stopmsg{color:var(--red);font-size:12.5px;margin:8px 2px 0;font-weight:600}
   .badge.badge-red{color:#ffb4b0;border-color:var(--red);background:rgba(240,85,77,.14)}
-  .divchip{background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:999px;
+  .divchip{font-variant-numeric:tabular-nums;background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:999px;
     padding:2px 9px 2px 6px;font-size:12.5px;cursor:pointer;display:inline-flex;align-items:center;gap:5px;line-height:1.5}
   .divchip .cbox{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;
     border-radius:4px;border:1.5px solid var(--green);background:var(--green);color:#04120a;font-size:11px;font-weight:800}
@@ -93,7 +115,7 @@
   .closed-sec>summary.closed-sum{margin:0 3px 2px;padding:6px 0}
   .closed-sec .pos{opacity:.82}
   .green{color:var(--green)} .red{color:var(--red)} .amber{color:var(--amber)}
-  .grp-title{font-size:12.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;
+  .grp-title{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;
     margin:20px 3px 2px;font-weight:700}
   /* --- Redesign Karten-Kopf --- */
   .pos-head{cursor:pointer}
@@ -113,12 +135,12 @@
   .pos-body{margin-top:12px}
   /* Sortier-Leiste */
   .sortsel{display:flex;align-items:center;gap:9px;margin:16px 3px 4px}
-  .sortsel .sl{color:var(--muted);font-size:12px}
+  .sortsel .sl{color:var(--muted);font-size:10.5px}
   /* Fixierte Kopfleiste: erscheint erst, wenn der Portfolio-Block weggescrollt ist.
      Bewusst nur die drei Kennzahlen + Suche — nicht der ganze Block. */
   .sticky{position:fixed;left:0;right:0;top:0;z-index:60;display:flex;align-items:center;gap:10px;
     padding:7px max(12px,env(safe-area-inset-right)) 7px max(12px,env(safe-area-inset-left));
-    background:rgba(15,18,22,.94);border-bottom:1px solid var(--line);
+    background:rgba(14,19,26,.94);border-bottom:1px solid var(--rule);
     transform:translateY(-110%);transition:transform .16s ease}
   @supports (backdrop-filter:blur(8px)){ .sticky{backdrop-filter:blur(8px)} }
   .sticky.on{transform:none}
@@ -145,19 +167,22 @@
   .yearseg::-webkit-scrollbar{display:none}
   .yearseg button{background:transparent;color:var(--muted);font-size:11.5px;font-weight:600;
     padding:4px 8px;border-radius:0;white-space:nowrap;border:0;flex:0 0 auto}
-  .yearseg button.on{background:var(--acc);color:#fff}
+  .yearseg button.on{background:var(--accent);color:#17120a}
   .sortseg button{background:transparent;color:var(--muted);font-size:12.5px;font-weight:600;padding:6px 13px;border-radius:0}
-  .sortseg button.on{background:var(--accent);color:#fff}
+  .sortseg button.on{background:var(--accent);color:#17120a}
   /* Break-even-Leiste (Labels an Markern, zentriert) */
   .esb{position:relative;height:66px;margin:4px 2px 2px}
-  .esb-trk{position:absolute;left:0;right:0;top:38px;height:4px;border-radius:3px;background:var(--line);transform:translateY(-50%)}
-  .esb-fill{position:absolute;top:38px;height:4px;border-radius:3px;transform:translateY(-50%)}
+  .esb-trk{position:absolute;left:0;right:0;top:38px;height:4px;border-radius:0;background:var(--line);transform:translateY(-50%)}
+  .esb-trk::before,.esb-trk::after{content:"";position:absolute;top:-4px;width:1px;height:12px;background:var(--rule)}
+  .esb-trk::before{left:0} .esb-trk::after{right:0}   /* Skalenenden wie auf einem Messstab */
+  .esb-fill{position:absolute;top:38px;height:4px;border-radius:0;transform:translateY(-50%)}
   .esb-fill.up{background:var(--green)} .esb-fill.down{background:var(--red)}
   .esb-mk{position:absolute;top:38px;transform:translate(-50%,-50%)}
   .esb-mk .d{width:11px;height:11px;border-radius:50%}
   .esb-mk.e .d{background:transparent;border:2px solid var(--muted)}
   .esb-mk.j .d{width:14px;height:14px;background:var(--txt);border:3px solid var(--card)}
-  .esb-mk.b .l{width:3px;height:15px;border-radius:2px;background:var(--accent)}
+  .esb-mk.b .l{width:2px;height:30px;border-radius:0;background:var(--accent);
+    box-shadow:0 0 0 3px var(--card)}   /* Break-even zieht als Lot durch die ganze Leiste */
   .esb-lab{position:absolute;font-size:11.5px;white-space:nowrap}
   .esb-lab .n{color:var(--muted)} .esb-lab .v{font-weight:700}
   .esb-lab.e .v,.esb-lab .pl.e .v{color:var(--muted);font-weight:600}   /* Einstieg grau wie sein Marker */
@@ -168,7 +193,7 @@
   .esb-lab.top{top:5px} .esb-lab.bot{top:50px}
   .esb-lab.be .v{color:var(--accent)}
   /* Portfolio-Summe */
-  .total{background:linear-gradient(180deg,var(--card2),var(--card));border:1px solid var(--line);
+  .total{background:var(--card);border:1px solid var(--line);border-top:2px solid var(--accent);
     border-radius:var(--radius);padding:13px 14px;margin-bottom:6px}
   .total .kpis{margin:8px 0 0}
   .total .v{font-size:clamp(13px,4vw,15.5px)}
@@ -185,7 +210,7 @@
   .two>*{min-width:0}
   .seg{display:flex;background:var(--card2);border:1px solid var(--line);border-radius:10px;overflow:hidden}
   .seg button{flex:1;background:transparent;color:var(--muted);padding:10px;font-weight:600;border-radius:0}
-  .seg button.act{background:var(--accent);color:#fff}
+  .seg button.act{background:var(--accent);color:#17120a}
   .sheet-actions{display:flex;gap:9px;margin-top:6px}
   .sheet-actions .btn{flex:1;text-align:center}
   .del{color:var(--red);background:transparent;border:1px solid var(--line);padding:10px 12px;border-radius:10px}
@@ -579,6 +604,7 @@ function render(){
   }
   // Werte der fixierten Leiste nachziehen (Leiste selbst wird NICHT neu gebaut → Fokus bleibt)
   const jy0=state.settings.jahr||"";
+  _dispCur="EUR";   // Summen sind immer in Euro — sonst erbt die Leiste die Waehrung der zuletzt gezeichneten Karte
   const _ys=jy0?yearStats(jy0):null;
   const setv=(id,val,klass)=>{const e=document.getElementById(id); if(e){e.textContent=signEur(val); e.className="v "+cls(klass===undefined?val:klass);}};
   if(document.getElementById("sk_r")){
