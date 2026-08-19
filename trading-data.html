@@ -351,9 +351,40 @@ function yearsAvailable(){
   }
   return [...ys].filter(y=>/^\d{4}$/.test(y)).sort();
 }
+/* Bestand und Einstand zum Stichtag — signierte FIFO wie in compute(), aber nur über
+   Buchungen bis einschließlich `end`. Damit ist der Jahresend-Bestand exakt rekonstruierbar;
+   fehlen kann nur der Kurs von damals (den halten wir in p.yearPx fest). */
+function stateAsOf(pos,end){
+  const tx=(pos.tx||[]).map((t,i)=>({...t,_i:i})).filter(t=>String(t.datum||"")<=end)
+    .sort((a,b)=>(a.datum<b.datum?-1:a.datum>b.datum?1:a._i-b._i));
+  const lots=[];
+  for(const t of tx){
+    const st=num(t.stueck), ku=num(t.kurs), ge=num(t.gebuehr)||0;
+    if(!(st>0)||isNaN(ku))continue;
+    const fps=ge/st, side=t.typ==="kauf"?"long":"short";
+    let qty=st;
+    while(qty>1e-9 && lots.length && lots[0].side!==side){
+      const lot=lots[0], q=Math.min(qty,lot.q);
+      lot.q-=q; qty-=q; if(lot.q<=1e-9)lots.shift();
+    }
+    if(qty>1e-9) lots.push({q:qty,price:ku,fps,side});
+  }
+  const L=lots.filter(l=>l.side==="long");
+  return {openQty:L.reduce((s,l)=>s+l.q,0)-lots.filter(l=>l.side==="short").reduce((s,l)=>s+l.q,0),
+          openCost:L.reduce((s,l)=>s+l.q*(l.price+l.fps),0)};
+}
+// Unrealisierter Stand am Jahresende (nur wenn ein Kurs für dieses Jahr festgehalten wurde)
+function unrealAtYearEnd(pos,y){
+  const px=(pos.yearPx||{})[y];
+  if(px==null) return null;
+  const a=stateAsOf(pos,y+"-12-31");
+  if(a.openQty<=1e-9) return 0;          // nichts gehalten → nichts unrealisiert
+  return a.openQty*px - a.openCost;
+}
 function yearStats(y){
   const fx=state.settings.fxRates||{};
-  let real=0,divs=0,steuer=0,trades=0;
+  let real=0,divs=0,steuer=0,trades=0,wert=0,fehlt=0,mitKurs=0;
+  const vor=String(+y-1);
   for(const p of state.positions){
     const cur=(p.currency||"EUR").toUpperCase();
     const rate=cur==="EUR"?1:(fx[cur]>0?fx[cur]:1);
@@ -365,8 +396,16 @@ function yearStats(y){
       steuer+=(num(t.steuer)||0)*rate;
     }
     for(const d of (p.div||[])) if(String(d.datum||"").slice(0,4)===y) divs+=(num(d.netto)||0)*rate;
+    if(p.cash) continue;                                   // Cash hat keine Kursänderung
+    // Wertänderung = unrealisiert am Jahresende − unrealisiert am Vorjahresende.
+    // Zusammen mit „realisiert" ergibt das die vollständige Jahresperformance.
+    const hatteBestand = stateAsOf(p,y+"-12-31").openQty>1e-9 || stateAsOf(p,vor+"-12-31").openQty>1e-9;
+    if(!hatteBestand) continue;
+    const uEnd=unrealAtYearEnd(p,y), uVor=unrealAtYearEnd(p,vor);
+    if(uEnd==null || uVor==null){ fehlt++; continue; }      // Jahresend-Kurs fehlt → ehrlich ausweisen
+    wert+=(uEnd-uVor)*rate; mitKurs++;
   }
-  return {real,divs,steuer,trades};
+  return {real,divs,steuer,trades,wert,fehlt,mitKurs,gesamt:real+divs+wert};
 }
 function setJahr(y){ state.settings.jahr=y; save(); render(); }
 
@@ -412,10 +451,11 @@ function render(){
       const y=yearStats(jy);
       return `<div class="kpis">
       <div class="kpi"><div class="k">Realisiert ${jy}</div><div class="v ${cls(y.real)}">${signEur(y.real)}</div></div>
-      <div class="kpi"><div class="k">Dividenden ${jy}</div><div class="v ${cls(y.divs)}">${signEur(y.divs)}</div></div>
-      <div class="kpi"><div class="k">Steuer ${jy}</div><div class="v">${feur(y.steuer)}</div></div>
+      <div class="kpi"><div class="k">Wertänderung ${jy}</div><div class="v ${cls(y.wert)}">${y.mitKurs?signEur(y.wert):"–"}</div></div>
+      <div class="kpi"><div class="k">Gesamt ${jy}</div><div class="v ${cls(y.gesamt)}">${signEur(y.gesamt)}</div></div>
     </div>
-    <div class="hint" style="margin-top:6px">${y.trades} abgeschlossene Trade(s) in ${jy}. Unrealisierte Kursgewinne gibt es nur für heute — nicht rückwirkend je Jahr.</div>`;
+    <div class="hint" style="margin-top:6px">${y.trades} abgeschlossene Trade(s) · Dividenden ${feur(y.divs)} · Steuer ${feur(y.steuer)}${
+      y.fehlt?` · <span class="red">${y.fehlt} Position(en) ohne Jahresend-Kurs</span> — die Wertänderung ist dort noch nicht drin (Kurse werden ab jetzt je Jahr festgehalten).`:""}</div>`;
     })()}
     ${(()=>{
       const ys=yearsAvailable(); if(ys.length<2) return "";
@@ -858,6 +898,9 @@ async function refreshPrices(auto){
         const f=toEur(q.cur)/toEur(pcur); val=q.price*f; if(pv!=null)pv*=f; from=(pcur==="EUR"?q.cur:"");
       }
       p.kursAktuell=(+(val.toFixed(val<10?4:2))+"").replace(".",","); p.fxFrom=from; p.kursTime=q.time||Date.now(); p.prevClose=(pv!=null?+pv.toFixed(4):null);
+      // Kurs unter dem laufenden Jahr ablegen: der letzte Abruf eines Jahres ist damit
+      // automatisch der Jahresend-Kurs — Grundlage für die Wertänderung je Jahr.
+      (p.yearPx||(p.yearPx={}))[String(new Date().getFullYear())]=+val.toFixed(6);
       ok++;
     }
     state.settings.pricesUpdated=Date.now();
