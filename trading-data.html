@@ -743,6 +743,7 @@ function renderPos(p,m,idx){
   const stopVal=num(p.stop);
   const belowStop=m.hasKurs && stopVal>0 && m.kurs<stopVal;   // Kurs unter Stop
   el.className="pos"+(m.oversell?" warn":"")+(belowStop?" stop":"");
+  el.dataset.pos=p.id;   // Anker, um die Ansicht beim Neuzeichnen an Ort und Stelle zu halten
   const fxNote = p.fxFrom?` · <span class="lbl">≈ aus ${esc(p.fxFrom)}</span>`:"";
   const tsNote = (p.kursTime&&(Date.now()-p.kursTime>18e5))?` · <span class="lbl">${esc(kursTimeLbl(p.kursTime))}</span>`:"";
   const openLine = m.openQty>0
@@ -831,10 +832,26 @@ function renderPos(p,m,idx){
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
 
 /* ---------- Kurs schnell setzen ---------- */
-function toggleDivOff(pid){const p=find(pid);if(!p)return;p.divOff=!p.divOff;touch(p);save();render();syncPushLater();}
-function toggleDivGlobal(){state.settings.divGlobalOff=!state.settings.divGlobalOff;state.settings.divGlobalAt=Date.now();save();render();syncPushLater();}
-function toggleSteuerGlobal(){state.settings.steuerGlobalOn=!state.settings.steuerGlobalOn;state.settings.steuerGlobalAt=Date.now();save();render();syncPushLater();}
-function toggleSteuer(pid){const p=find(pid);if(!p)return;p.steuerOn=!p.steuerOn;touch(p);save();render();syncPushLater();}
+/* Beim Umschalten aendert sich die Hoehe weiter oben (Chip-Zeile bricht um) — ohne Anker
+   rutscht der ganze Inhalt weg. Wir merken uns die Lage der angeklickten Karte und
+   schieben danach exakt um die Differenz zurueck. */
+function renderStable(pid){
+  const vor = pid && document.querySelector(`.pos[data-pos="${CSS.escape(pid)}"]`);
+  const oben = vor ? vor.getBoundingClientRect().top : null;
+  render();
+  if(oben!=null){
+    const nach = document.querySelector(`.pos[data-pos="${CSS.escape(pid)}"]`);
+    if(nach){ const d=nach.getBoundingClientRect().top-oben; if(Math.abs(d)>0.5) window.scrollBy(0,d); }
+  }
+}
+function toggleDivOff(pid){const p=find(pid);if(!p)return;p.divOff=!p.divOff;touch(p);save();renderStable(pid);syncPushLater();}
+function ersteSichtbareKarte(){
+  for(const el of document.querySelectorAll(".pos[data-pos]")) if(el.getBoundingClientRect().bottom>0) return el.dataset.pos;
+  return null;
+}
+function toggleDivGlobal(){state.settings.divGlobalOff=!state.settings.divGlobalOff;state.settings.divGlobalAt=Date.now();save();renderStable(ersteSichtbareKarte());syncPushLater();}
+function toggleSteuerGlobal(){state.settings.steuerGlobalOn=!state.settings.steuerGlobalOn;state.settings.steuerGlobalAt=Date.now();save();renderStable(ersteSichtbareKarte());syncPushLater();}
+function toggleSteuer(pid){const p=find(pid);if(!p)return;p.steuerOn=!p.steuerOn;touch(p);save();renderStable(pid);syncPushLater();}
 function find(pid){return state.positions.find(p=>p.id===pid);}
 
 /* ---------- Live-Kurse (Twelve Data, CORS-offen, Gratis-Key) ---------- */
