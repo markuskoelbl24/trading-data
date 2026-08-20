@@ -333,7 +333,7 @@ function compute(pos){
   if(pos.cash){
     const bal=num(pos.cashBetrag)||0;
     const divs=(pos.div||[]).reduce((s,d)=>s+(num(d.netto)||0),0);
-    const divCounted=!pos.divOff && !state.settings.divGlobalOff;
+    const divCounted=!pos.divOff && !state.settings.zinsGlobalOff;   // eigener Schalter fuer Zinsen
     return {tx:[],realized:0,openQty:0,openCost:0,avg:0,curVal:bal,unreal:0,divs,
       gesamt:(divCounted?divs:0),hasKurs:true,oversell:false,buyCostAll:0,
       gesamtPct:NaN,unrealPct:NaN,jahr:NaN,first:"",last:"",closed:false,days:0,perTx:{},kurs:bal,
@@ -523,11 +523,14 @@ function render(){
     return;
   }
   // Portfolio-Summe
-  let tReal=0,tUnreal=0,tDiv=0,tDivOff=0,tCur=0,tGes=0,tSteuer=0,tCash=0;
+  let tReal=0,tUnreal=0,tDiv=0,tDivOff=0,tCur=0,tGes=0,tSteuer=0,tCash=0,tZins=0,tZinsOff=0;
   const _fx=state.settings.fxRates||{};   // EUR je 1 Einheit Fremdwährung (aus letztem Kurs-Abruf)
   const metrics=state.positions.map(p=>{const m=compute(p);
     const cur=(p.currency||"EUR").toUpperCase(); const rate=cur==="EUR"?1:(_fx[cur]>0?_fx[cur]:1); m._eur=rate;
-    tReal+=m.realized*rate;tDiv+=m.divs*rate;if(p.divOff)tDivOff+=m.divs*rate;tSteuer+=m.steuer*rate;
+    tReal+=m.realized*rate;
+    if(p.cash){ tZins+=m.divs*rate; if(p.divOff)tZinsOff+=m.divs*rate; }      // Zinsen zaehlen zum Cash
+    else { tDiv+=m.divs*rate; if(p.divOff)tDivOff+=m.divs*rate; }
+    tSteuer+=m.steuer*rate;
     if(m.isCash){ tCash+=m.curVal*rate; } else if(m.hasKurs){ tUnreal+=m.unreal*rate; tCur+=m.curVal*rate; }
     tGes+=m.gesamt*rate;return m;});
   _depotWert=tCur+tCash;   // Bezugsgröße für den Prozentanteil je Position
@@ -567,13 +570,19 @@ function render(){
     })()}
 
     <div class="hint" style="margin-top:8px">Investiert <b style="color:var(--txt)">${feur(tCur)}</b>${tCash?` · Cash <b style="color:var(--txt)">${feur(tCash)}</b> · Depotwert <b style="color:var(--txt)">${feur(tCur+tCash)}</b>`:""}</div>
-    ${(tDiv||tSteuer)?`<div class="totchips">
+    ${(tDiv||tZins||tSteuer)?`<div class="totchips">
       ${tDiv?(()=>{
         const aus=state.settings.divGlobalOff;
         const zaehlt=tDiv-tDivOff;                       // was wirklich in „Gesamt" steckt
         return `<button class="divchip ${aus?"off":""}" onclick="toggleDivGlobal()" title="Dividenden in Gesamt einrechnen">
           <span class="cbox">${aus?"":"✓"}</span>Dividenden <span class="amt green">+${emoney(aus?tDiv:zaehlt).replace("+","")}</span>
           ${(!aus&&tDivOff)?`<span class="sub">von ${feur(tDiv)}</span>`:""}</button>`;})():""}
+      ${tZins?(()=>{
+        const aus=state.settings.zinsGlobalOff;
+        const zaehlt=tZins-tZinsOff;
+        return `<button class="divchip ${aus?"off":""}" onclick="toggleZinsGlobal()" title="Zinsen auf das Guthaben in Gesamt einrechnen">
+          <span class="cbox">${aus?"":"✓"}</span>Zinsen <span class="amt green">+${emoney(aus?tZins:zaehlt).replace("+","")}</span>
+          ${(!aus&&tZinsOff)?`<span class="sub">von ${feur(tZins)}</span>`:""}</button>`;})():""}
       ${tSteuer?`<button class="divchip ${state.settings.steuerGlobalOn?"":"off"}" onclick="toggleSteuerGlobal()" title="Bereits einbehaltene Steuer (v. a. Trade Republic) abziehen — IBKR fehlt darin">
         <span class="cbox">${state.settings.steuerGlobalOn?"✓":""}</span>Steuer <span class="amt red">−${emoney(tSteuer).replace("-","")}</span></button>`:""}
     </div>`:""}`;
@@ -801,7 +810,10 @@ function renderPos(p,m,idx){
       <button class="txedit ph-edit" onclick="event.stopPropagation();openPos('${p.id}')">✎</button>
     </div>
     <div class="pos-body"${collapsed?' style="display:none"':''}>
-      ${m.isCash?`<div class="meta"><span>Guthaben <b style="color:var(--txt)">${feur(m.curVal)}</b></span>${m.divs?` · <span>Zinsen ${feur(m.divs)}</span>`:""}</div>
+      ${m.isCash?`<div class="meta"><span>Guthaben <b style="color:var(--txt)">${feur(m.curVal)}</b></span>${m.divs?(()=>{
+          const zaehlt=!p.divOff && !state.settings.zinsGlobalOff;
+          const hinweis=state.settings.zinsGlobalOff?" · oben für alle abgeschaltet":"";
+          return ` <button class="divchip ${zaehlt?"":"off"}" onclick="toggleDivOff('${p.id}')" title="Zinsen in Gesamt mitzählen${hinweis}"><span class="cbox">${zaehlt?"✓":""}</span>Zinsen <span class="amt green">+${emoney(m.divs).replace("+","")}</span></button>`;})():""}</div>
       <div class="pos-actions"><button class="btn sm" onclick="openDiv('${p.id}')">+ Zins</button>
         <button class="btn sec sm" onclick="openCash('${p.id}')">Bearbeiten</button></div>`:`
       ${m.openQty>0&&!isNaN(m.erstEinstieg)?esBar(m):""}
@@ -809,9 +821,11 @@ function renderPos(p,m,idx){
       <div class="meta">
         ${openLine}
         ${m.divs?(()=>{
-          const zaehlt=!p.divOff && !state.settings.divGlobalOff;      // echter Zustand, nicht nur die lokale Marke
-          const global=state.settings.divGlobalOff?" · oben für alle abgeschaltet":"";
-          return `<button class="divchip ${zaehlt?"":"off"}" onclick="toggleDivOff('${p.id}')" title="Dividende in Gesamt mitzählen${global}"><span class="cbox">${zaehlt?"✓":""}</span>Dividende <span class="amt green">+${emoney(m.divs).replace("+","")}</span></button>`;})():""}
+          const cash=!!p.cash, wort=cash?"Zinsen":"Dividende";
+          const globalAus=cash?state.settings.zinsGlobalOff:state.settings.divGlobalOff;
+          const zaehlt=!p.divOff && !globalAus;                        // echter Zustand, nicht nur die lokale Marke
+          const hinweis=globalAus?" · oben für alle abgeschaltet":"";
+          return `<button class="divchip ${zaehlt?"":"off"}" onclick="toggleDivOff('${p.id}')" title="${wort} in Gesamt mitzählen${hinweis}"><span class="cbox">${zaehlt?"✓":""}</span>${wort} <span class="amt green">+${emoney(m.divs).replace("+","")}</span></button>`;})():""}
         ${m.steuer?(()=>{
           const zaehlt=!!p.steuerOn || !!state.settings.steuerGlobalOn;
           const global=state.settings.steuerGlobalOn?" · oben für alle eingeschaltet":"";
@@ -851,6 +865,7 @@ function ersteSichtbareKarte(){
   return null;
 }
 function toggleDivGlobal(){state.settings.divGlobalOff=!state.settings.divGlobalOff;state.settings.divGlobalAt=Date.now();save();renderStable(ersteSichtbareKarte());syncPushLater();}
+function toggleZinsGlobal(){state.settings.zinsGlobalOff=!state.settings.zinsGlobalOff;state.settings.zinsGlobalAt=Date.now();save();renderStable(ersteSichtbareKarte());syncPushLater();}
 function toggleSteuerGlobal(){state.settings.steuerGlobalOn=!state.settings.steuerGlobalOn;state.settings.steuerGlobalAt=Date.now();save();renderStable(ersteSichtbareKarte());syncPushLater();}
 function toggleSteuer(pid){const p=find(pid);if(!p)return;p.steuerOn=!p.steuerOn;touch(p);save();renderStable(pid);syncPushLater();}
 function find(pid){return state.positions.find(p=>p.id===pid);}
@@ -1117,7 +1132,8 @@ function u(o){return (o&&o._u)||0;}
 function syncPayload(){return {positions:state.positions, tombstones:state.tombstones||{},
   collapsed:state.settings.collapsed||{}, collapsedAt:state.settings.collapsedAt||0,
   divGlobalOff:!!state.settings.divGlobalOff, divGlobalAt:state.settings.divGlobalAt||0,
-  steuerGlobalOn:!!state.settings.steuerGlobalOn, steuerGlobalAt:state.settings.steuerGlobalAt||0, syncedAt:Date.now()};}
+  steuerGlobalOn:!!state.settings.steuerGlobalOn, steuerGlobalAt:state.settings.steuerGlobalAt||0,
+  zinsGlobalOff:!!state.settings.zinsGlobalOff, zinsGlobalAt:state.settings.zinsGlobalAt||0, syncedAt:Date.now()};}
 
 // Zwei Listen (tx bzw. div) nach id + Änderungszeit + Tombstones zusammenführen
 function mergeList(a,b,tomb){
@@ -1160,7 +1176,9 @@ function mergeStates(local,remote){
   const divGlobalOff = (remote.divGlobalAt||0)>(local.divGlobalAt||0) ? !!remote.divGlobalOff : !!local.divGlobalOff;
   const sAt=Math.max(local.steuerGlobalAt||0, remote.steuerGlobalAt||0);
   const steuerGlobalOn = (remote.steuerGlobalAt||0)>(local.steuerGlobalAt||0) ? !!remote.steuerGlobalOn : !!local.steuerGlobalOn;
-  return {positions, tombstones:tomb, collapsed, collapsedAt:Math.max(lAt,rAt), divGlobalOff, divGlobalAt:dAt, steuerGlobalOn, steuerGlobalAt:sAt};
+  const zAt=Math.max(local.zinsGlobalAt||0, remote.zinsGlobalAt||0);
+  const zinsGlobalOff = (remote.zinsGlobalAt||0)>(local.zinsGlobalAt||0) ? !!remote.zinsGlobalOff : !!local.zinsGlobalOff;
+  return {positions, tombstones:tomb, collapsed, collapsedAt:Math.max(lAt,rAt), divGlobalOff, divGlobalAt:dAt, steuerGlobalOn, steuerGlobalAt:sAt, zinsGlobalOff, zinsGlobalAt:zAt};
 }
 
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -1202,11 +1220,13 @@ async function fullSync(manual){
       const merged=mergeStates({positions:state.positions,tombstones:state.tombstones,
         collapsed:state.settings.collapsed,collapsedAt:state.settings.collapsedAt,
         divGlobalOff:state.settings.divGlobalOff,divGlobalAt:state.settings.divGlobalAt,
-        steuerGlobalOn:state.settings.steuerGlobalOn,steuerGlobalAt:state.settings.steuerGlobalAt}, remote);
+        steuerGlobalOn:state.settings.steuerGlobalOn,steuerGlobalAt:state.settings.steuerGlobalAt,
+        zinsGlobalOff:state.settings.zinsGlobalOff,zinsGlobalAt:state.settings.zinsGlobalAt}, remote);
       state.positions=merged.positions; state.tombstones=merged.tombstones;
       state.settings.collapsed=merged.collapsed; state.settings.collapsedAt=merged.collapsedAt;
       state.settings.divGlobalOff=merged.divGlobalOff; state.settings.divGlobalAt=merged.divGlobalAt;
       state.settings.steuerGlobalOn=merged.steuerGlobalOn; state.settings.steuerGlobalAt=merged.steuerGlobalAt;
+      state.settings.zinsGlobalOff=merged.zinsGlobalOff; state.settings.zinsGlobalAt=merged.zinsGlobalAt;
       save(); render();
       const pl=syncPayload();
       if(_syncUnchanged(pl, remote)){ done=true; break; }   // nichts geändert → kein Commit (spart Leer-Commits)
