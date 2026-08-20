@@ -58,6 +58,8 @@
   .kpi .v2{font-size:11px;font-weight:500;color:var(--muted);margin-top:1px}
   .meta{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12.5px;color:var(--muted);margin:8px 2px 2px}
   .meta b{color:var(--txt);font-weight:600}
+  .meta .archiv{color:var(--muted)}
+  .meta .archiv b{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
   .einstand{margin:10px 0 2px;padding:9px 11px 11px;background:var(--card2);
     border:1px solid var(--line);border-radius:11px;font-size:13px}
   .es-vals{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px}
@@ -337,7 +339,8 @@ function compute(pos){
     return {tx:[],realized:0,openQty:0,openCost:0,avg:0,curVal:bal,unreal:0,divs,
       gesamt:(divCounted?divs:0),hasKurs:true,oversell:false,buyCostAll:0,
       gesamtPct:NaN,unrealPct:NaN,jahr:NaN,first:"",last:"",closed:false,days:0,perTx:{},kurs:bal,
-      erstEinstieg:NaN,breakEven:NaN,beDelta:NaN,bePct:NaN,steuer:0,steuerCounted:false,isCash:true};
+      erstEinstieg:NaN,breakEven:NaN,beDelta:NaN,bePct:NaN,steuer:0,steuerCounted:false,isCash:true,
+      archivReal:0,archivDivs:0};
   }
   // Transaktionen chronologisch (stabil nach Eingabereihenfolge)
   const tx=(pos.tx||[]).map((t,i)=>({...t,_i:i}))
@@ -391,7 +394,11 @@ function compute(pos){
   const unreal=hasKurs?curVal-openCost:0;
   const divs=(pos.div||[]).reduce((s,d)=>s+ (num(d.netto)||0),0);
   const divCounted=!pos.divOff && !state.settings.divGlobalOff;   // global aus ODER pro Position abwählbar
-  const gesamt=realized+(hasKurs?unreal:0)+(divCounted?divs:0);
+  // Frühere, abgeschlossene Phasen liegen verdichtet als Jahreswerte vor (siehe archivBis).
+  // Sie zählen in die Summen, aber NICHT in Break-even und Einstand — das ist ein anderer Play.
+  const summe=o=>Object.values(o||{}).reduce((a,b)=>a+(+b||0),0);
+  const archivReal=summe(pos.archiv), archivDivs=summe(pos.archivDiv);
+  const gesamt=realized+(hasKurs?unreal:0)+(divCounted?divs:0)+archivReal+(divCounted?archivDivs:0);
   // Zeit & Jahresrendite
   const dates=tx.map(t=>t.datum).filter(Boolean).sort();
   const first=dates[0], last=dates[dates.length-1];
@@ -410,7 +417,7 @@ function compute(pos){
   const bePct=(!isNaN(beDelta)&&erstEinstieg)?beDelta/erstEinstieg*100:NaN;
   return {tx,realized,openQty,openCost,avg,curVal,unreal,divs,gesamt,hasKurs,
     oversell,buyCostAll,gesamtPct,unrealPct,jahr,first,last,closed,days,perTx,kurs,
-    erstEinstieg,breakEven,beDelta,bePct,steuer:steuerSum,steuerCounted};
+    erstEinstieg,breakEven,beDelta,bePct,steuer:steuerSum,steuerCounted,archivReal,archivDivs};
 }
 
 /* ---------- Jahresauswertung ----------
@@ -422,6 +429,8 @@ function yearsAvailable(){
   for(const p of state.positions){
     for(const t of (p.tx||[])) if(t.datum) ys.add(String(t.datum).slice(0,4));
     for(const d of (p.div||[])) if(d.datum) ys.add(String(d.datum).slice(0,4));
+    for(const y of Object.keys(p.archiv||{})) ys.add(y);
+    for(const y of Object.keys(p.archivDiv||{})) ys.add(y);
   }
   return [...ys].filter(y=>/^\d{4}$/.test(y)).sort();
 }
@@ -470,6 +479,8 @@ function yearStats(y){
       steuer+=(num(t.steuer)||0)*rate;
     }
     for(const d of (p.div||[])) if(String(d.datum||"").slice(0,4)===y) divs+=(num(d.netto)||0)*rate;
+    real+=(+((p.archiv||{})[y])||0)*rate;                  // verdichtete frühere Phasen
+    divs+=(+((p.archivDiv||{})[y])||0)*rate;
     if(p.cash) continue;                                   // Cash hat keine Kursänderung
     // Wertänderung = unrealisiert am Jahresende − unrealisiert am Vorjahresende.
     // Zusammen mit „realisiert" ergibt das die vollständige Jahresperformance.
@@ -527,9 +538,9 @@ function render(){
   const _fx=state.settings.fxRates||{};   // EUR je 1 Einheit Fremdwährung (aus letztem Kurs-Abruf)
   const metrics=state.positions.map(p=>{const m=compute(p);
     const cur=(p.currency||"EUR").toUpperCase(); const rate=cur==="EUR"?1:(_fx[cur]>0?_fx[cur]:1); m._eur=rate;
-    tReal+=m.realized*rate;
+    tReal+=(m.realized+m.archivReal)*rate;                                    // inkl. frueherer Phasen
     if(p.cash){ tZins+=m.divs*rate; if(p.divOff)tZinsOff+=m.divs*rate; }      // Zinsen zaehlen zum Cash
-    else { tDiv+=m.divs*rate; if(p.divOff)tDivOff+=m.divs*rate; }
+    else { tDiv+=(m.divs+m.archivDivs)*rate; if(p.divOff)tDivOff+=m.divs*rate; }
     tSteuer+=m.steuer*rate;
     if(m.isCash){ tCash+=m.curVal*rate; } else if(m.hasKurs){ tUnreal+=m.unreal*rate; tCur+=m.curVal*rate; }
     tGes+=m.gesamt*rate;return m;});
@@ -820,6 +831,7 @@ function renderPos(p,m,idx){
       ${kpiBlock(m)}
       <div class="meta">
         ${openLine}
+        ${(m.archivReal||m.archivDivs)?`<span class="archiv" title="Abgeschlossene Phasen, die länger als ein halbes Jahr zurückliegen — verdichtet gespeichert. Zählen in die Summen, aber nicht in Einstand und Break-even.">Früher <b class="${cls(m.archivReal+m.archivDivs)}">${signEur(m.archivReal+m.archivDivs)}</b>${p.archivBis?` <span class="nb">bis ${fdate(p.archivBis)}</span>`:""}</span>`:""}
         ${m.divs?(()=>{
           const cash=!!p.cash, wort=cash?"Zinsen":"Dividende";
           const globalAus=cash?state.settings.zinsGlobalOff:state.settings.divGlobalOff;
@@ -1594,7 +1606,8 @@ function tdBuildPlan(text){
   const rows=tdParseCSV(text);
   const seen=new Set(); let maxDate="";
   for(const p of state.positions) for(const it of (p.tx||[]).concat(p.div||[])){ if(it.trid)seen.add(it.trid); const d=(it.datum||"").slice(0,10); if(d>maxDate)maxDate=d; }
-  const knownIsin=new Set(), knownName=new Set();
+  const knownIsin=new Set(), knownName=new Set(), archivBis={};
+  for(const p of state.positions){ if(p.archivBis && p.isin) archivBis[(p.broker||"TR")+"|"+p.isin]=p.archivBis; }
   for(const p of state.positions){ const bk=(p.broker||"TR"); if(p.isin)knownIsin.add(bk+"|"+p.isin); const k=tdNorm(p.titel); if(k)knownName.add(bk+"|"+k); }
   const isinMap=state.settings.isinMap||{};
   // Netto-Stück je Symbol (Kauf +, Verkauf − stehen so in der CSV) → noch gehalten?
@@ -1619,6 +1632,7 @@ function tdBuildPlan(text){
     if(trid && seen.has(trid)){skipped++;continue;}
     const isin=(r.symbol||"").trim(), name=(r.name||"").trim();
     const broker=(String(r.broker||"TR").toUpperCase().trim())||"TR";
+    if(archivBis[broker+"|"+isin] && dt<=archivBis[broker+"|"+isin]){ skipped++; continue; }   // liegt im verdichteten Archiv
     const isKnown = knownIsin.has(broker+"|"+isin) || knownName.has(broker+"|"+tdNorm(name)) || !!isinMap[isin];
     if(!isKnown){ if(!unknown[isin])unknown[isin]={isin,name,count:0,last:"",held:(net[isin]||0)>0.0001,broker}; unknown[isin].count++; if(dt>unknown[isin].last)unknown[isin].last=dt; }
     cand.push({ isin, name, kind, trid, datum:dt, broker, stueck, kurs,
