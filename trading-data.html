@@ -108,11 +108,25 @@
   .stopmsg{color:var(--red);font-size:12.5px;margin:8px 2px 0;font-weight:600}
   .badge.badge-red{color:#ffb4b0;border-color:var(--red);background:rgba(240,85,77,.14)}
   .divchip{font-variant-numeric:tabular-nums;background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:999px;
-    padding:2px 9px 2px 6px;font-size:12.5px;cursor:pointer;display:inline-flex;align-items:center;gap:5px;line-height:1.5}
-  .divchip .cbox{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;
-    border-radius:4px;border:1.5px solid var(--green);background:var(--green);color:#04120a;font-size:11px;font-weight:800}
+    padding:4px 10px 4px 7px;font-size:12.5px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;line-height:1.35}
+  .divchip .cbox{display:inline-flex;align-items:center;justify-content:center;width:13px;height:13px;flex:0 0 auto;
+    border-radius:3px;border:1.5px solid var(--green);background:var(--green);color:#04120a;font-size:9.5px;font-weight:800;line-height:1}
   .divchip.off{color:var(--txt)}   /* nicht ausgrauen — sonst wirkt der Chip verschwunden */
-  .totchips{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px}
+  /* Bestand als Leitzahl, darunter ein Balken: wie viel arbeitet, wie viel liegt still */
+  .hero{display:flex;align-items:baseline;gap:9px;margin:11px 0 0}
+  .hero .k{font-family:var(--f-cond);text-transform:uppercase;letter-spacing:.09em;font-size:10px;color:var(--muted)}
+  .hero .v{font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-size:clamp(19px,5.5vw,25px);font-weight:600;letter-spacing:-.5px}
+  .split{display:flex;height:6px;border-radius:3px;overflow:hidden;background:var(--card2);margin:9px 0 7px}
+  .split i{display:block;height:100%}
+  .split .inv{background:var(--accent)}
+  .split .cash{background:var(--muted);opacity:.45}
+  .splitlab{display:flex;flex-wrap:wrap;gap:3px 16px;font-size:11.5px;color:var(--muted)}
+  .splitlab b{font-family:var(--f-mono);font-variant-numeric:tabular-nums;color:var(--txt);font-weight:600}
+  .splitlab .dot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px}
+  .splitlab .dot.inv{background:var(--accent)} .splitlab .dot.cash{background:var(--muted);opacity:.45}
+  .fusszeile{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:11px}
+  .fussmeta{font-size:11.5px;color:var(--muted);white-space:nowrap;display:inline-flex;align-items:center;gap:8px}
+  .totchips{display:flex;flex-wrap:wrap;gap:7px;margin-top:0}
   .totchips .divchip{padding:4px 11px 4px 7px;gap:6px;align-items:baseline}
   .totchips .divchip .cbox{align-self:center}   /* nur das Kaestchen bleibt mittig */
   .divchip .amt{font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-weight:600}
@@ -169,6 +183,7 @@
   .sticky.q .skpis{display:none!important}
   .sfind{background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:9px;
     padding:6px 10px;font-size:13px;flex:0 0 auto;cursor:pointer}
+  .sfind.gear{font-size:18px;line-height:1;padding:5px 10px}
   @media (min-width:700px){                      /* Am Rechner ist Platz: Feld gleich sichtbar */
     .sticky input{display:block}
     .sticky.q.scrolled .skpis{display:flex!important}
@@ -255,7 +270,7 @@
   <input id="q" type="search" inputmode="search" placeholder="Position suchen…" autocomplete="off"
          oninput="setQuery(this.value)" onkeydown="if(event.key==='Escape')clearQuery()">
   <button class="sfind" onclick="toggleSearch()" aria-label="Suchen">🔍</button>
-  <button class="sfind" onclick="openBackup()" aria-label="Setup">⚙︎</button>
+  <button class="sfind gear" onclick="openBackup()" aria-label="Setup">⚙︎</button>
 </div>
 <div id="total" class="total"></div>
 <div id="list"></div>
@@ -561,11 +576,14 @@ function render(){
       ${syncReady()?`<button class="btn ghost" style="padding:5px 10px" onclick="fullSync(true)">⇅ Sync</button>`:""}
       ${hasSym?`<button id="refreshBtn" class="btn ghost" style="padding:5px 10px" onclick="refreshPrices()">⟳ Kurse</button>`:""}
       ${state.positions.length>8?`<button class="btn ghost" style="padding:5px 10px" onclick="toggleSearch()" aria-label="Suchen">🔍</button>`:""}</div>
-    <div class="row" style="margin-top:2px">
-      <span class="hint" style="margin:0">${hasSym&&upd?`Zuletzt abgerufen: ${new Date(upd).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})} Uhr`:""}</span>
-      <div class="spacer"></div>
-      <span class="badge" title="Aktuell gehaltene Wertpapiere (ohne geschlossene und ohne Cash)">${
-        metrics.filter((m,i)=>!state.positions[i].cash && m.openQty>1e-9).length} gehalten</span></div>
+    ${(()=>{                                   // Bestand zuerst: was ist das Depot wert, und wie viel liegt still?
+      const wert=tCur+tCash; if(!(wert>0)) return "";
+      const q=Math.max(0,Math.min(100, tCur/wert*100));
+      return `<div class="hero"><span class="k">Depotwert</span><span class="v">${feur(wert)}</span></div>
+      <div class="split"><i class="inv" style="width:${q}%"></i><i class="cash" style="width:${100-q}%"></i></div>
+      <div class="splitlab"><span><i class="dot inv"></i>Investiert <b>${feur(tCur)}</b></span>
+        ${tCash?`<span><i class="dot cash"></i>Cash <b>${feur(tCash)}</b> · ${pct.format(100-q)} %</span>`:""}</div>`;
+    })()}
     ${(()=>{                                   // Jahr gewählt → Jahres-Zahlen statt Depot-Zahlen
       const jy=state.settings.jahr||"";
       if(!jy) return `<div class="kpis">
@@ -583,7 +601,7 @@ function render(){
       y.fehlt?` · <span class="red">${y.fehlt} Position(en) ohne Jahresend-Kurs</span> — die Wertänderung ist dort noch nicht drin (Kurse werden ab jetzt je Jahr festgehalten).`:""}</div>`;
     })()}
 
-    <div class="hint" style="margin-top:8px">Investiert <b style="color:var(--txt)">${feur(tCur)}</b>${tCash?` · Cash <b style="color:var(--txt)">${feur(tCash)}</b> · Depotwert <b style="color:var(--txt)">${feur(tCur+tCash)}</b>`:""}</div>
+    <div class="fusszeile">
     ${(tDiv||tZins||tSteuer)?`<div class="totchips">
       ${tDiv?(()=>{
         const aus=state.settings.divGlobalOff;
@@ -599,7 +617,12 @@ function render(){
           ${(!aus&&tZinsOff)?`<span class="sub">von ${feur(tZins)}</span>`:""}</button>`;})():""}
       ${tSteuer?`<button class="divchip ${state.settings.steuerGlobalOn?"":"off"}" onclick="toggleSteuerGlobal()" title="Bereits einbehaltene Steuer (v. a. Trade Republic) abziehen — IBKR fehlt darin">
         <span class="cbox">${state.settings.steuerGlobalOn?"✓":""}</span>Steuer <span class="amt red">−${emoney(tSteuer).replace("-","")}</span></button>`:""}
-    </div>`:""}`;
+    </div>`:""}
+      <div class="spacer"></div>
+      <span class="fussmeta">${hasSym&&upd?`Kurse ${new Date(upd).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}`:""}
+        <span class="badge" title="Aktuell gehaltene Wertpapiere (ohne geschlossene und ohne Cash)">${
+        metrics.filter((m,i)=>!state.positions[i].cash && m.openQty>1e-9).length} gehalten</span></span>
+    </div>`;
 
   // Offene vs. geschlossene Positionen trennen (geschlossen = alles verkauft, aber es gab Buchungen)
   const openIdx=[], closedIdx=[];
@@ -727,8 +750,10 @@ function esBar(m){
     fill=`<div class="esb-fill ${up?"up":"down"}" style="left:${a}%;width:${b-a}%"></div>`;}
   // Labels farbcodiert wie die Marker: Einstieg grau (umrandeter Punkt), jetzt weiß (voller Punkt) → Wort „jetzt" entfällt.
   // Alle mittig über ihrem Marker; clampBarLabels() korrigiert nach dem Render Randüberlauf/Überschneidung.
-  const eLab=p=>`<div class="esb-lab top e" style="left:${p}%;transform:translateX(-50%)"><span class="n">Einstieg</span> <span class="v">${feur(E)}</span></div>`;
-  const jLab=p=>`<div class="esb-lab top j" style="left:${p}%;transform:translateX(-50%)"><span class="v">${feur(N)}</span></div>`;
+  // Am linken/rechten Rand buendig setzen statt mittig — sonst wird die Beschriftung abgeschnitten.
+  const anker=(pp)=> pp<14 ? `left:0;transform:none` : pp>86 ? `right:0;left:auto;transform:none` : `left:${pp}%;transform:translateX(-50%)`;
+  const eLab=p=>`<div class="esb-lab top e" style="${anker(p)}"><span class="n">Einstieg</span> <span class="v">${feur(E)}</span></div>`;
+  const jLab=p=>`<div class="esb-lab top j" style="${anker(p)}"><span class="v">${feur(N)}</span></div>`;
   let topLabs;
   if(pN==null){ topLabs=eLab(pE); }
   else if(Math.abs(pN-pE)<30){
@@ -737,7 +762,7 @@ function esBar(m){
     topLabs=`<div class="esb-lab top pair" style="left:${mid}%;transform:translateX(-50%)"><span class="pl e"><span class="n">Einstieg</span> <span class="v">${feur(E)}</span></span><span class="pl j"><span class="v">${feur(N)}</span></span></div>`;
   }
   else { topLabs=eLab(pE)+jLab(pN); }
-  const beLab=`<div class="esb-lab bot be" style="left:${pB}%;transform:translateX(-50%)"><span class="n">Break-even</span> <span class="v">${feur(B)}</span></div>`;
+  const beLab=`<div class="esb-lab bot be" style="${anker(pB)}"><span class="n">Break-even</span> <span class="v">${feur(B)}</span></div>`;
   // %-Abstand des aktuellen Kurses zum Break-even – macht die Größenordnung sichtbar (auto-gezoomte Leiste zeigt sie sonst nicht)
   let pctLab="";
   if(pN!=null && B){
