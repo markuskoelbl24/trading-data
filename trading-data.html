@@ -1744,7 +1744,17 @@ function tdBuildPlan(text){
     if(!isKnown){ if(!unknown[isin])unknown[isin]={isin,name,count:0,last:"",held:(net[isin]||0)>0.0001,broker}; unknown[isin].count++; if(dt>unknown[isin].last)unknown[isin].last=dt; }
     cand.push({ isin, name, kind, trid, datum:dt, broker, stueck, kurs, frei,
       fee:Math.abs(tdCsvNum(r.fee)||0), tax:Math.abs(tdCsvNum(r.tax)||0), amount:Math.abs(tdCsvNum(r.amount)||0) }); }
-  return {cand, unknown, skipped, noWP, total:rows.length, maxDate}; }
+  // Kontostand: Betrag + Steuer + Gebühr über ALLE Zeilen. Achtung, das Vorzeichen steht
+  // in der CSV — Steuer-Erstattungen (Verlustverrechnung) sind positiv und werden gutgeschrieben.
+  let saldo=0, zinsen=[];
+  for(const r of rows){
+    saldo += (tdCsvNum(r.amount)||0) + (tdCsvNum(r.tax)||0) + (tdCsvNum(r.fee)||0);
+    if((r.type||"").toUpperCase()==="INTEREST_PAYMENT"){
+      const netto=(tdCsvNum(r.amount)||0)+(tdCsvNum(r.tax)||0);
+      if(netto) zinsen.push({datum:(r.date||"").slice(0,10), netto, trid:(r.transaction_id||"").trim()});
+    }
+  }
+  return {cand, unknown, skipped, noWP, total:rows.length, maxDate, saldo, zinsen}; }
 // Kern: einmal simulieren (mutate=false → Vorschau auf Klon) bzw. anwenden (mutate=true → echter Zustand)
 function tdSimulate(assign, mutate){
   const positions = mutate ? state.positions : JSON.parse(JSON.stringify(state.positions));
@@ -1828,8 +1838,28 @@ function tdApplyPlan(){ if(!tdPlan)return;
   const assign={}; for(const isin in tdPlan.unknown){ const v=(val("tdmap_"+tdNorm(isin))||"").trim(); if(v)assign[isin]=v.toUpperCase(); }
   state.settings.isinMap=Object.assign({}, state.settings.isinMap||{}, assign);
   const r=tdSimulate(assign, true);
+  const kasse=tdKasseAktualisieren(tdPlan);
   save(); render(); syncPushLater(); tdPlan=null; closeSheet();
-  toast("✓ "+r.backfill+" nachgetragen · "+r.added+" neu"+(r.skippedBaseline?" · "+r.skippedBaseline+" übersprungen":"")); }
+  toast("✓ "+r.backfill+" nachgetragen · "+r.added+" neu"+(r.skippedBaseline?" · "+r.skippedBaseline+" übersprungen":"")+(kasse?" · Konto "+kasse:"")); }
+
+/* Kontostand und Zinsen aus der CSV auf das Verrechnungskonto schreiben — sonst müsste
+   man den Saldo nach jedem Import von Hand nachtragen. Nur das TR-Konto; IBKR bleibt unberührt. */
+function tdKasseAktualisieren(plan){
+  if(!plan || plan.saldo==null) return "";
+  let k=state.positions.find(p=>p.cash && (p.broker||"TR")!=="IBKR");
+  if(!k){ k={id:uid(),titel:"Verrechnungskonto TR",cash:true,broker:"TR",currency:"EUR",cashBetrag:"",notiz:"",tx:[],div:[],_u:Date.now()};
+    state.positions.push(k); }
+  k.cashBetrag=fmtBetrag(plan.saldo);
+  k.notiz="Saldo aus allen Geldflüssen der TR-CSV";
+  const vorhanden=new Set((k.div||[]).map(d=>d.trid).filter(Boolean));
+  for(const z of (plan.zinsen||[])){
+    if(z.trid && vorhanden.has(z.trid)) continue;
+    (k.div||(k.div=[])).push({id:uid(),datum:z.datum,netto:fmtBetrag(z.netto),notiz:"Zinsen",trid:z.trid,_u:Date.now()});
+  }
+  touch(k);
+  return k.cashBetrag+" €";
+}
+function fmtBetrag(n){ return (Math.round(n*100)/100).toFixed(2).replace(".",","); }
 
 /* ---------- Helper ---------- */
 function val(id){const e=document.getElementById(id);return e?e.value:"";}
