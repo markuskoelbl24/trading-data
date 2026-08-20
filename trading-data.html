@@ -1162,7 +1162,17 @@ function mergeList(a,b,tomb){
     if(!it||!it.id)continue;
     if(!map[it.id] || u(it)>=u(map[it.id])) map[it.id]=it;
   }
-  return Object.values(map).filter(it=>!(tomb[it.id] && tomb[it.id]>=u(it)));
+  let liste=Object.values(map).filter(it=>!(tomb[it.id] && tomb[it.id]>=u(it)));
+  // Sicherheitsnetz: dieselbe Buchung mit ZWEI Kennungen (passiert, wenn Daten von aussen
+  // neu aufgebaut werden und dabei neue Kennungen bekommen). Die Broker-Nummer (trid) ist
+  // eindeutig — bei Gleichstand gewinnt die kleinere Kennung, damit alle Geräte gleich wählen.
+  const proTrid={};
+  for(const it of liste){
+    if(!it.trid) continue;
+    const da=proTrid[it.trid];
+    if(!da || String(it.id)<String(da.id)) proTrid[it.trid]=it;
+  }
+  return liste.filter(it=>!it.trid || proTrid[it.trid]===it);
 }
 // Gesamt-Merge zweier Zustände
 function mergeStates(local,remote){
