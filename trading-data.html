@@ -1638,19 +1638,35 @@ function tdBuildPlan(text){
   // Knockout/Tilgung koppeln: WARRANT_EXERCISE bucht die Stücke aus, die TILG-Zeile zahlt aus.
   // Rücknahmebetrag je ISIN+Datum sammeln → Kurs = Betrag / Stück (nicht pauschal 0!).
   const redeem={}; for(const r of rows){ if((r.type||"").toUpperCase()==="TILG"){ const k=(r.symbol||"").trim()+"|"+(r.date||"").slice(0,10); redeem[k]=(redeem[k]||0)+(tdCsvNum(r.amount)||0); } }
+  // Wahldividende in BAR: der Anspruch wird eingebucht und sofort wieder zurückgegeben.
+  // Beide Zeilen überspringen, wenn sie sich ausgleichen — sonst greift FIFO auf die
+  // echten Aktien zu und erzeugt einen Scheinverlust, und die Bardividende zählte doppelt.
+  const anspruch={};
+  for(const r of rows){ const t=(r.type||"").toUpperCase();
+    if(/STOCK.?DIVIDEND|OPTIONAL.?DIVIDEND/.test(t)){ const k=(r.symbol||"").trim(); anspruch[k]=(anspruch[k]||0)+(tdCsvNum(r.shares)||0); } }
   const net={}; for(const r of rows){ const isin=(r.symbol||"").trim(); if(!isin)continue; const k=(r.type||"").toUpperCase()==="WARRANT_EXERCISE"?"verkauf":tdClassify(r); if(k==="kauf"||k==="verkauf")net[isin]=(net[isin]||0)+(tdCsvNum(r.shares)||0); }
   const cand=[]; const unknown={}; let skipped=0, noWP=0;
   for(const r of rows){
     const ty=(r.type||"").toUpperCase();
     if(ty==="TILG") continue;   // Auszahlung wird über den zugehörigen WARRANT_EXERCISE verbucht
+    if(/STOCK.?DIVIDEND|OPTIONAL.?DIVIDEND/.test(ty) && Math.abs(anspruch[(r.symbol||"").trim()]||0)<1e-4) continue;   // bar gewählt → hebt sich auf
     const dt=(r.date||"").slice(0,10);
-    let kind, stueck, kurs;
+    let kind, stueck, kurs, frei=false;
     if(ty==="WARRANT_EXERCISE"){
       stueck=Math.abs(tdCsvNum(r.shares)||0); if(!stueck){noWP++;continue;}
       kind="verkauf"; kurs=(redeem[(r.symbol||"").trim()+"|"+dt]||0)/stueck;   // Rücknahmepreis pro Stück
     } else {
       kind=tdClassify(r); if(!kind){noWP++;continue;}
       stueck=Math.abs(tdCsvNum(r.shares)||0); kurs=Math.abs(tdCsvNum(r.price)||0);
+      // Zuteilungen ohne Gegenleistung (Wahldividende, Bonusaktien, Split, Bezugsrechte)
+      // mit 0 € buchen. Der Preis in der CSV ist dort ein Nennwert, kein Kaufpreis —
+      // uebernaehme man ihn, entstuende ein erfundener Gewinn oder Verlust, und die
+      // Bardividende waere doppelt gezaehlt. Echte Auszahlungen (Andienung, Tilgung)
+      // behalten ihren Preis.
+      if(/STOCK.?DIVIDEND|OPTIONAL.?DIVIDEND|BONUS|SPLIT|SPIN.?OFF|INTERMEDIATE.?SECURITIES|CALL_ON|WORTHLESS|MERGER/.test(ty)){
+        kurs=0;
+        if(tdCsvNum(r.shares)>0) frei=true;   // Zugang ohne Kaufpreis → im Tool sichtbar machen
+      }
     }
     const trid=(r.transaction_id||"").trim();
     if(trid && seen.has(trid)){skipped++;continue;}
@@ -1659,7 +1675,7 @@ function tdBuildPlan(text){
     if(archivBis[broker+"|"+isin] && dt<=archivBis[broker+"|"+isin]){ skipped++; continue; }   // liegt im verdichteten Archiv
     const isKnown = knownIsin.has(broker+"|"+isin) || knownName.has(broker+"|"+tdNorm(name)) || !!isinMap[isin];
     if(!isKnown){ if(!unknown[isin])unknown[isin]={isin,name,count:0,last:"",held:(net[isin]||0)>0.0001,broker}; unknown[isin].count++; if(dt>unknown[isin].last)unknown[isin].last=dt; }
-    cand.push({ isin, name, kind, trid, datum:dt, broker, stueck, kurs,
+    cand.push({ isin, name, kind, trid, datum:dt, broker, stueck, kurs, frei,
       fee:Math.abs(tdCsvNum(r.fee)||0), tax:Math.abs(tdCsvNum(r.tax)||0), amount:Math.abs(tdCsvNum(r.amount)||0) }); }
   return {cand, unknown, skipped, noWP, total:rows.length, maxDate}; }
 // Kern: einmal simulieren (mutate=false → Vorschau auf Klon) bzw. anwenden (mutate=true → echter Zustand)
@@ -1691,7 +1707,7 @@ function tdSimulate(assign, mutate){
     } else {
       const m=(p.tx||[]).find(t=>!used[p.id].has(t.id)&&!t.trid&&t.typ===c.kind&&(t.datum||"").slice(0,10)===c.datum&&Math.abs((num(t.stueck)||0)-c.stueck)<0.001&&Math.abs((num(t.kurs)||0)-c.kurs)<Math.max(0.02,c.kurs*0.01));
       if(m){ if(c.tax)m.steuer=tdFmt(c.tax); if(c.fee&&!(num(m.gebuehr)>0))m.gebuehr=tdFmt(c.fee); m.trid=c.trid; if(mutate)touch(m); used[p.id].add(m.id); backfill++; }
-      else if(isNew[p.id]||c.datum>(posMaxDate[p.id]||"")){ const t={id:uid(),typ:c.kind,datum:c.datum,stueck:tdFmt(c.stueck),kurs:tdFmt(c.kurs),gebuehr:c.fee?tdFmt(c.fee):"",steuer:c.tax?tdFmt(c.tax):"",notiz:"TR-Import",trid:c.trid,_u:now}; (p.tx||(p.tx=[])).push(t); used[p.id].add(t.id); added++; }
+      else if(isNew[p.id]||c.datum>(posMaxDate[p.id]||"")){ const t={id:uid(),typ:c.kind,datum:c.datum,stueck:tdFmt(c.stueck),kurs:tdFmt(c.kurs),gebuehr:c.fee?tdFmt(c.fee):"",steuer:c.tax?tdFmt(c.tax):"",notiz:(c.frei?"Kapitalmaßnahme – Einstand prüfen":"TR-Import"),trid:c.trid,_u:now}; (p.tx||(p.tx=[])).push(t); used[p.id].add(t.id); added++; }
       else skippedBaseline++;
     }
     if(c.trid)seen.add(c.trid);
