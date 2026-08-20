@@ -562,7 +562,8 @@ function render(){
     <div class="row" style="margin-top:2px">
       <span class="hint" style="margin:0">${hasSym&&upd?`Zuletzt abgerufen: ${new Date(upd).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})} Uhr`:""}</span>
       <div class="spacer"></div>
-      <span class="badge">${state.positions.length} Positionen</span></div>
+      <span class="badge" title="Aktuell gehaltene Wertpapiere (ohne geschlossene und ohne Cash)">${
+        metrics.filter((m,i)=>!state.positions[i].cash && m.openQty>1e-9).length} gehalten</span></div>
     ${(()=>{                                   // Jahr gewählt → Jahres-Zahlen statt Depot-Zahlen
       const jy=state.settings.jahr||"";
       if(!jy) return `<div class="kpis">
