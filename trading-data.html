@@ -127,6 +127,8 @@
     margin:20px 3px 2px;font-weight:700}
   /* --- Redesign Karten-Kopf --- */
   .pos-head{cursor:pointer}
+  .pos-head.cash{cursor:default}
+  .pos-head.cash .ph-sub{gap:7px;margin-top:6px}
   .ph-left{flex:1;min-width:0}
   .titel .chev{color:var(--muted);font-size:12px;font-weight:400;margin-left:5px}
   .ph-sub{color:var(--muted);font-size:13px;margin-top:4px;display:flex;flex-wrap:wrap;gap:3px 9px;align-items:center}
@@ -821,6 +823,23 @@ function renderPos(p,m,idx){
   const soft = isDead || !(p.symbol||"").trim();  // 0 nach Knock-out bzw. Kurs von Hand → grau statt weiß
   const deadBadge = isDead?` <span class="badge badge-red">kein Kurs</span>`:"";
   const right = m.openQty>0 ? `<div class="ph-right"><div class="ph-kurs${soft?" soft":""}">${m.hasKurs?feur(m.kurs):"—"}</div>${isDead?"":dayHtml(p,m)}</div>` : "";
+  if(m.isCash){
+    // Cash braucht nichts zum Aufklappen: Guthaben, Zinsen und die zwei Knöpfe passen in
+    // zwei Zeilen. Betrag und Zinsen stehen jeweils genau EINMAL.
+    const zaehlt=!p.divOff && !state.settings.zinsGlobalOff;
+    const hinweis=state.settings.zinsGlobalOff?" · oben für alle abgeschaltet":"";
+    el.innerHTML=`
+      <div class="pos-head cash">
+        <div class="ph-left">
+          <div class="titel">${esc(p.titel||"Verrechnungskonto")}${p.broker?` <span class="badge">${esc(p.broker)}</span>`:""}${anteil}</div>
+          <div class="ph-sub">${m.divs?`<button class="divchip ${zaehlt?"":"off"}" onclick="toggleDivOff('${p.id}')" title="Zinsen in Gesamt mitzählen${hinweis}"><span class="cbox">${zaehlt?"✓":""}</span>Zinsen <span class="amt green">+${emoney(m.divs).replace("+","")}</span></button>`:""}
+            <button class="btn sec sm" onclick="openDiv('${p.id}')">+ Zins</button></div>
+        </div>
+        <div class="ph-right"><div class="ph-kurs">${feur(m.curVal)}</div></div>
+        <button class="txedit ph-edit" onclick="openCash('${p.id}')" title="Guthaben bearbeiten">✎</button>
+      </div>`;
+    return el;
+  }
   el.innerHTML=`
     <div class="pos-head" onclick="toggleCollapse('${p.id}')">
       <div class="ph-left">
