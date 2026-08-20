@@ -1616,7 +1616,10 @@ function tdClassify(r){
   const shares=tdCsvNum(r.shares), price=tdCsvNum(r.price), amount=tdCsvNum(r.amount);
   // Kapitalmaßnahme (Split, Spin-off, Bonus, Storno): Stückzahl-Änderung OHNE Preis → als Kauf/Verkauf @0,
   // sonst fehlen die Stücke und die Position zeigt eine falsche Anzahl.
-  if(shares && !price && /SPLIT|SPIN.?OFF|BONUS|STOCK.?DIVIDEND|MERGER|CAPITAL_INCREASE|WORTHLESS|TILG/.test(hay))
+  // Jede Kapitalmaßnahme, die STÜCKE bewegt, muss gebucht werden — sonst stimmt die Anzahl nicht.
+  // Auch wenn ein Preis dabeisteht: z. B. Bezugsrechte in Aktien tauschen (CALL_ON…), eine
+  // Wahldividende in Aktien nehmen (STOCK_DIVIDEND) oder eine Andienung (RIGHTS).
+  if(shares && /SPLIT|SPIN.?OFF|BONUS|MERGER|CAPITAL_INCREASE|WORTHLESS|TILG|WARRANT|STOCK.?DIVIDEND|OPTIONAL.?DIVIDEND|INTERMEDIATE.?SECURITIES|CALL_ON|RIGHTS|EXCHANGE/.test(hay))
     return shares>0?"kauf":"verkauf";
   if(/DIVIDEND|DISTRIBUTION|AUSSCHUE?TT/.test(hay)) return amount?"dividende":null;
   if(shares&&price){
