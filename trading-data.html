@@ -604,8 +604,10 @@ function render(){
   state.positions.forEach((p,idx)=>{
     if(!matchesQuery(p)) return;                     // Suche filtert die Liste, nicht die Summen
     const mm=metrics[idx];
-    const hatVergangenheit = mm.tx.length>0 || mm.archivReal || mm.archivDivs;
-    (mm.openQty<=1e-9 && hatVergangenheit ? closedIdx : openIdx).push(idx);
+    // Ein Wertpapier ohne Bestand ist geschlossen — auch wenn davon nur noch Dividenden
+    // uebrig sind (z. B. eine Wahldividende ohne eigene Buchungen). Cash bleibt immer oben.
+    const hatVergangenheit = mm.tx.length>0 || (p.div||[]).length>0 || mm.archivReal || mm.archivDivs;
+    (!p.cash && mm.openQty<=1e-9 && hatVergangenheit ? closedIdx : openIdx).push(idx);
   });
   list.innerHTML="";
   // Sortier-Leiste (flache Liste; Branche bleibt in den Daten für spätere Verteilungs-Ansicht)
