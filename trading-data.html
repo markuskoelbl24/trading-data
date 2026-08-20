@@ -602,7 +602,9 @@ function render(){
   const openIdx=[], closedIdx=[];
   state.positions.forEach((p,idx)=>{
     if(!matchesQuery(p)) return;                     // Suche filtert die Liste, nicht die Summen
-    (metrics[idx].openQty<=1e-9 && metrics[idx].tx.length>0 ? closedIdx : openIdx).push(idx);
+    const mm=metrics[idx];
+    const hatVergangenheit = mm.tx.length>0 || mm.archivReal || mm.archivDivs;
+    (mm.openQty<=1e-9 && hatVergangenheit ? closedIdx : openIdx).push(idx);
   });
   list.innerHTML="";
   // Sortier-Leiste (flache Liste; Branche bleibt in den Daten für spätere Verteilungs-Ansicht)
@@ -630,7 +632,12 @@ function render(){
     sum.className="grp-title closed-sum";
     sum.textContent="Geschlossene Positionen ("+closedIdx.length+")";
     sec.appendChild(sum);
-    closedIdx.forEach(idx=>sec.appendChild(renderPos(state.positions[idx],metrics[idx],idx)));
+    // Erst auf Klick zeichnen: bei voller Historie sind das mehrere hundert Karten,
+    // die sonst bei jedem Neuzeichnen entstehen und das Handy ausbremsen.
+    const fuellen=()=>{ if(sec.dataset.gefuellt) return;
+      closedIdx.forEach(idx=>sec.appendChild(renderPos(state.positions[idx],metrics[idx],idx)));
+      sec.dataset.gefuellt="1"; };
+    if(sec.open) fuellen(); else sec.addEventListener("toggle",fuellen,{once:true});
     list.appendChild(sec);
   }
   if(_q && !openIdx.length && !closedIdx.length){
@@ -1211,7 +1218,8 @@ async function ghPut(payload, sha){
   const c=ghCfg();
   const [owner,repo]=c.repo.split("/");
   const url=`https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(c.path)}`;
-  const body={message:"trading sync "+new Date().toISOString(), content:b64encode(JSON.stringify(payload,null,2)), branch:c.branch};
+  // kompakt statt eingerueckt: spart bei voller Historie rund ein Drittel (797 -> 534 KB)
+  const body={message:"trading sync "+new Date().toISOString(), content:b64encode(JSON.stringify(payload)), branch:c.branch};
   if(sha) body.sha=sha;
   const r=await fetch(url,{method:"PUT",cache:"no-store",headers:{Authorization:"Bearer "+c.token,Accept:"application/vnd.github+json"},body:JSON.stringify(body)});
   const txt=await r.text();
