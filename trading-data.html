@@ -1267,8 +1267,16 @@ async function ghGet(){
   if(r.status===404) return {data:{positions:[],tombstones:{}}, sha:null};
   if(!r.ok) throw new Error("GET "+r.status+" "+(await r.text()).slice(0,140));
   const j=await r.json();
-  let data={positions:[],tombstones:{}};
-  try{ data=JSON.parse(b64decode(j.content.replace(/\n/g,""))); }catch(e){}
+  // GitHub liefert Dateien über 1 MB OHNE Inhalt aus. Früher lief der Abgleich dann mit einem
+  // LEEREN Gegenstand weiter und hat den eigenen Stand darübergeschrieben — dabei gingen die
+  // Löschmarken der anderen Geräte verloren. Lieber abbrechen als etwas überschreiben.
+  const roh=(j.content||"").replace(/\n/g,"");
+  const kb=Math.round((j.size||0)/1024);
+  if(!roh) throw new Error("Der Stand im Repo ist "+kb+" KB groß — über der Grenze von 1024 KB, die GitHub ausliefert. Abgleich abgebrochen, damit nichts überschrieben wird.");
+  let data;
+  try{ data=JSON.parse(b64decode(roh)); }
+  catch(e){ throw new Error("Der Stand im Repo ist unlesbar — Abgleich abgebrochen, damit nichts überschrieben wird."); }
+  if(kb>900) setSyncStatus("Datei "+kb+" KB — nah an der Grenze");
   return {data, sha:j.sha};
 }
 async function ghPut(payload, sha){
