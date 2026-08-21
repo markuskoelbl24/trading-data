@@ -195,7 +195,12 @@
     background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:4px 9px 5px}
   .skpi .k{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
   .skpi .v{font-size:12.5px;font-weight:600;white-space:nowrap}
-  .skpis{display:none;gap:6px;margin:0 auto;min-width:0}
+  .skpis{display:none;gap:6px;flex:1 1 auto;justify-content:center;min-width:0}
+  @media (min-width:700px){        /* echt auf Seitenmitte, nicht mittig zwischen Titel und Suche */
+    .sticky.scrolled .skpis{position:absolute;left:50%;transform:translateX(-50%);flex:0 0 auto}
+  }
+  /* Suche und Setup bleiben immer am rechten Rand — auch wenn die Kennzahlen fehlen */
+  .sright{display:flex;align-items:center;gap:8px;flex:0 0 auto;margin-left:auto}
   .sticky.scrolled .skpis{display:flex}
   .sticky input{flex:0 1 190px;min-width:0;background:var(--card2);border:1px solid var(--line);
     color:var(--txt);border-radius:9px;padding:7px 10px;font-size:13px;display:none}
@@ -289,10 +294,12 @@
     <div class="skpi"><span class="k">Unreal.</span><span class="v" id="sk_u">–</span></div>
     <div class="skpi"><span class="k">Gesamt</span><span class="v" id="sk_g">–</span></div>
   </div>
-  <input id="q" type="search" inputmode="search" placeholder="Position suchen…" autocomplete="off"
-         oninput="setQuery(this.value)" onkeydown="if(event.key==='Escape')clearQuery()">
-  <button class="sfind" onclick="toggleSearch()" aria-label="Suchen">🔍</button>
-  <button class="sfind gear" onclick="openBackup()" aria-label="Setup">⚙︎</button>
+  <div class="sright">
+    <input id="q" type="search" inputmode="search" placeholder="Position suchen…" autocomplete="off"
+           oninput="setQuery(this.value)" onkeydown="if(event.key==='Escape')clearQuery()">
+    <button class="sfind" onclick="toggleSearch()" aria-label="Suchen">🔍</button>
+    <button class="sfind gear" onclick="openBackup()" aria-label="Setup">⚙︎</button>
+  </div>
 </div>
 <div id="total" class="total"></div>
 <div id="list"></div>
