@@ -56,8 +56,9 @@
   .pos-head{display:flex;align-items:flex-start;gap:10px}
   .badge{font-family:var(--f-cond);letter-spacing:.06em;font-variant-numeric:tabular-nums;font-size:11px;color:var(--muted);background:var(--card2);border:1px solid var(--line);
     padding:2px 8px;border-radius:999px;white-space:nowrap}
-  .titel{font-size:17px;font-weight:700;line-height:1.35}   /* war 1.15: beim Umbruch stiessen die Marken an */
+  .titel{font-size:17px;font-weight:700;line-height:1.35;overflow-wrap:break-word}   /* war 1.15: beim Umbruch stiessen die Marken an */
   .titel .badge{vertical-align:1px}
+  .titel .nobr{white-space:nowrap}   /* letztes Wort + Marken wandern gemeinsam in die naechste Zeile */
   .kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin:12px 0 4px}
   .kpi{background:var(--card2);border:1px solid var(--line);border-radius:11px;padding:9px 9px 8px}
   .kpi .k{font-size:9.5px;color:var(--muted);margin-bottom:4px}
@@ -213,7 +214,7 @@
   .sfind{background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:9px;
     width:34px;height:34px;padding:0;font-size:14px;flex:0 0 auto;cursor:pointer;
     display:inline-flex;align-items:center;justify-content:center;line-height:1}
-  .sfind.gear{font-size:17px}
+  .sfind.gear{font-size:26px}
   @media (min-width:700px){                      /* Am Rechner ist Platz: Feld gleich sichtbar */
     .sticky input{display:block}
     .sticky.q.scrolled .skpis{display:flex!important}
@@ -387,6 +388,18 @@ function daysBetween(a,b){return Math.round((new Date(b)-new Date(a))/864e5);}
 const today=()=>new Date().toISOString().slice(0,10);
 
 /* ---------- FIFO-Kern ---------- */
+/* Marken (Broker, Anteil) sollen nie ALLEIN in einer neuen Zeile stehen: letztes Titelwort
+   und Marken bilden eine untrennbare Gruppe — passt die Marke nicht mehr, wandert das Wort mit. */
+function titelMitMarken(text, marken){
+  const t=esc(text||"");
+  if(!marken) return t;
+  const i=t.lastIndexOf(" ");
+  const rest = i>0 ? t.slice(i+1) : t;
+  // Einwort-Titel koennen nichts mitnehmen (sonst bliebe Zeile 1 leer) -> Marken bleiben
+  // wenigstens untereinander zusammen; sonst wandert das letzte Wort mit nach unten.
+  if(i<=0 || rest.length>16) return t+' <span class="nobr">'+marken.replace(/^\s+/,"")+'</span>';
+  return t.slice(0,i+1)+'<span class="nobr">'+rest+marken+'</span>';
+}
 function compute(pos){
   // Cash-Konto: kein FIFO, kein Break-even — nur Saldo (+ Zinsen als „Dividende")
   if(pos.cash){
@@ -895,7 +908,7 @@ function renderPos(p,m,idx){
     el.innerHTML=`
       <div class="pos-head cash">
         <div class="ph-left">
-          <div class="titel">${esc(p.titel||"Verrechnungskonto")}${p.broker?` <span class="badge">${esc(p.broker)}</span>`:""}${anteil}</div>
+          <div class="titel">${titelMitMarken(p.titel||"Verrechnungskonto",(p.broker?` <span class="badge">${esc(p.broker)}</span>`:"")+anteil)}</div>
           <div class="ph-sub">${m.divs?`<button class="divchip ${zaehlt?"":"off"}" onclick="toggleDivOff('${p.id}')" title="Zinsen in Gesamt mitzählen${hinweis}"><span class="cbox">${zaehlt?"✓":""}</span>Zinsen <span class="amt green">+${emoney(m.divs).replace("+","")}</span></button>`:""}
             <button class="btn sec sm" onclick="openDiv('${p.id}')">+ Zins</button></div>
         </div>
@@ -907,7 +920,7 @@ function renderPos(p,m,idx){
   el.innerHTML=`
     <div class="pos-head" onclick="toggleCollapse('${p.id}')">
       <div class="ph-left">
-        <div class="titel">${esc(p.titel||"(ohne Titel)")}${p.broker?` <span class="badge">${esc(p.broker)}</span>`:""}${anteil}${deadBadge}</div>
+        <div class="titel">${titelMitMarken(p.titel||"(ohne Titel)",(p.broker?` <span class="badge">${esc(p.broker)}</span>`:"")+anteil+deadBadge)}</div>
         <div class="ph-sub">${subLeft}${stopBadge}</div>
       </div>
       ${right}
