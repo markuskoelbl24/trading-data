@@ -108,7 +108,11 @@
   .stopmsg{color:var(--red);font-size:12.5px;margin:8px 2px 0;font-weight:600}
   .badge.badge-red{color:#ffb4b0;border-color:var(--red);background:rgba(240,85,77,.14)}
   .divchip{font-variant-numeric:tabular-nums;background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:999px;
-    padding:4px 10px 4px 7px;font-size:12.5px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;line-height:1.35}
+    padding:4px 10px 4px 7px;font-size:12.5px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;line-height:1.35;
+    white-space:nowrap;flex-wrap:nowrap}   /* nie INNERHALB des Chips umbrechen: sonst schwebt das
+    Häkchen mittig zwischen zwei Zeilen und die Beschriftung sitzt sichtbar zu hoch */
+  /* Optischer Ausgleich: Beschriftung und Ziffern haben keine Unterlängen, ihre sichtbare Masse
+     sitzt daher über der Mitte der Zeilenbox. Rechnerisch mittig wirkt das Häkchen sonst zu tief. */
   .divchip .cbox{display:inline-flex;align-items:center;justify-content:center;width:13px;height:13px;flex:0 0 auto;
     border-radius:3px;border:1.5px solid var(--green);background:var(--green);color:#04120a;font-size:9.5px;font-weight:800;line-height:1}
   .divchip.off{color:var(--txt)}   /* nicht ausgrauen — sonst wirkt der Chip verschwunden */
@@ -126,12 +130,15 @@
   .splitlab .dot.inv{background:var(--accent)} .splitlab .dot.cash{background:var(--muted);opacity:.45}
   .fusszeile{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:11px}
   .fussmeta{font-size:11.5px;color:var(--muted);white-space:nowrap;display:inline-flex;align-items:center;gap:8px}
-  .totchips{display:flex;flex-wrap:wrap;gap:7px;margin-top:0}
-  .totchips .divchip{padding:4px 11px 4px 7px;gap:6px;align-items:baseline}
+  .totchips{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin-top:0}   /* nicht strecken */
+  /* NICHT baseline: sobald der kleinere „von …"-Zusatz dazukommt, waechst die Zeile und das
+     Haekchen rutscht nach unten — genau der sichtbare Versatz. Mittig haelt alles auf einer Linie. */
+  .totchips .divchip{padding:4px 11px 4px 7px;gap:6px;align-items:center}
   .totchips .divchip .cbox{align-self:center}   /* nur das Kaestchen bleibt mittig */
   .divchip .amt{font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-weight:600}
   .divchip.off .amt{text-decoration:line-through;text-decoration-thickness:1.5px;color:var(--muted)}
   .divchip .sub{color:var(--muted);font-size:11px}
+  .divchip .chiptxt{display:inline}   /* eine Einheit: Beschriftung, Betrag und Zusatz auf einer Schriftlinie */
   .divchip.off .cbox{background:transparent;border-color:var(--muted)}
   .closed-sec{margin-top:22px}
   .closed-sec>summary.closed-sum{margin:0 3px 2px;padding:6px 0}
@@ -606,17 +613,12 @@ function render(){
       ${tDiv?(()=>{
         const aus=state.settings.divGlobalOff;
         const zaehlt=tDiv-tDivOff;                       // was wirklich in „Gesamt" steckt
-        return `<button class="divchip ${aus?"off":""}" onclick="toggleDivGlobal()" title="Dividenden in Gesamt einrechnen">
-          <span class="cbox">${aus?"":"✓"}</span>Dividenden <span class="amt green">+${emoney(aus?tDiv:zaehlt).replace("+","")}</span>
-          ${(!aus&&tDivOff)?`<span class="sub">von ${feur(tDiv)}</span>`:""}</button>`;})():""}
+        return `<button class="divchip ${aus?"off":""}" onclick="toggleDivGlobal()" title="Dividenden in Gesamt einrechnen"><span class="cbox">${aus?"":"✓"}</span><span class="chiptxt">Dividenden <span class="amt green">+${emoney(aus?tDiv:zaehlt).replace("+","")}</span>${(!aus&&tDivOff)?` <span class="sub">von ${feur(tDiv)}</span>`:""}</span></button>`;})():""}
       ${tZins?(()=>{
         const aus=state.settings.zinsGlobalOff;
         const zaehlt=tZins-tZinsOff;
-        return `<button class="divchip ${aus?"off":""}" onclick="toggleZinsGlobal()" title="Zinsen auf das Guthaben in Gesamt einrechnen">
-          <span class="cbox">${aus?"":"✓"}</span>Zinsen <span class="amt green">+${emoney(aus?tZins:zaehlt).replace("+","")}</span>
-          ${(!aus&&tZinsOff)?`<span class="sub">von ${feur(tZins)}</span>`:""}</button>`;})():""}
-      ${tSteuer?`<button class="divchip ${state.settings.steuerGlobalOn?"":"off"}" onclick="toggleSteuerGlobal()" title="Bereits einbehaltene Steuer (v. a. Trade Republic) abziehen — IBKR fehlt darin">
-        <span class="cbox">${state.settings.steuerGlobalOn?"✓":""}</span>Steuer <span class="amt red">−${emoney(tSteuer).replace("-","")}</span></button>`:""}
+        return `<button class="divchip ${aus?"off":""}" onclick="toggleZinsGlobal()" title="Zinsen auf das Guthaben in Gesamt einrechnen"><span class="cbox">${aus?"":"✓"}</span><span class="chiptxt">Zinsen <span class="amt green">+${emoney(aus?tZins:zaehlt).replace("+","")}</span>${(!aus&&tZinsOff)?` <span class="sub">von ${feur(tZins)}</span>`:""}</span></button>`;})():""}
+      ${tSteuer?`<button class="divchip ${state.settings.steuerGlobalOn?"":"off"}" onclick="toggleSteuerGlobal()" title="Bereits einbehaltene Steuer (v. a. Trade Republic) abziehen — IBKR fehlt darin"><span class="cbox">${state.settings.steuerGlobalOn?"✓":""}</span><span class="chiptxt">Steuer <span class="amt red">−${emoney(tSteuer).replace("-","")}</span></span></button>`:""}
     </div>`:""}
       <div class="spacer"></div>
       <span class="fussmeta">${hasSym&&upd?`Kurse ${new Date(upd).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}`:""}
