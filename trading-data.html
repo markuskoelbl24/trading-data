@@ -46,7 +46,13 @@
   input[type=date]{-webkit-appearance:none;appearance:none;text-align:left}
   label{font-size:12px;color:var(--muted);display:block;margin:0 0 4px}
   .pos{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
-    padding:13px 13px 11px;margin:12px 0}
+    padding:13px 13px 11px;margin:12px 0;position:relative}
+  /* Zugeklappte Karte bekommt unten einen kleinen Griff — zeigt „hier geht noch was auf",
+     ohne dass ein Pfeil neben dem Namen stört. */
+  .pos.zu{padding-bottom:15px;cursor:pointer}
+  .pos.zu::after{content:"";position:absolute;left:50%;bottom:6px;transform:translateX(-50%);
+    width:26px;height:3px;border-radius:2px;background:var(--rule)}
+  .pos.zu:hover::after{background:var(--accent)}
   .pos-head{display:flex;align-items:flex-start;gap:10px}
   .badge{font-family:var(--f-cond);letter-spacing:.06em;font-variant-numeric:tabular-nums;font-size:11px;color:var(--muted);background:var(--card2);border:1px solid var(--line);
     padding:2px 8px;border-radius:999px;white-space:nowrap}
@@ -83,7 +89,7 @@
   .pos-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:11px}
   .pos-actions .btn{background:transparent;color:var(--accent);border:1px solid var(--accent);font-weight:600}
   .pos-actions .btn.sec{color:var(--txt);border-color:var(--line)}
-  details{margin-top:9px;border-top:1px dashed var(--line);padding-top:8px}
+  details{margin-top:9px;border-top:1px solid var(--rule);padding-top:9px}
   summary{cursor:pointer;color:var(--muted);font-size:13px;list-style:none;user-select:none}
   summary::-webkit-details-marker{display:none}
   summary::before{content:"▸ ";color:var(--accent)}
@@ -151,7 +157,6 @@
   .pos-head.cash{cursor:default}
   .pos-head.cash .ph-sub{gap:7px;margin-top:6px}
   .ph-left{flex:1;min-width:0}
-  .titel .chev{color:var(--muted);font-size:12px;font-weight:400;margin-left:5px}
   .ph-sub{color:var(--muted);font-size:13px;margin-top:4px;display:flex;flex-wrap:wrap;gap:3px 9px;align-items:center}
   .ph-sub b{color:var(--txt);font-weight:700}
   .ph-sub .ph-ges{white-space:nowrap}
@@ -174,23 +179,33 @@
   .sticky{position:fixed;left:0;right:0;top:0;z-index:60;display:flex;align-items:center;gap:10px;
     padding:7px max(12px,env(safe-area-inset-right)) 7px max(12px,env(safe-area-inset-left));
     background:rgba(14,19,26,.94);border-bottom:1px solid var(--rule)}
-  .sticky .brand{font-size:15px;font-weight:700;flex:1 1 auto;min-width:0;white-space:nowrap;
-    overflow:hidden;text-overflow:ellipsis}
+  .sticky .brand{font-size:15px;font-weight:700;flex:0 0 auto;white-space:nowrap}
   .sticky .brand span{font-size:11px;color:var(--muted);font-weight:400;margin-left:3px}
-  .sticky.scrolled .brand,.sticky.q .brand{display:none}
+  .sticky.q .brand{display:none}                      /* bei offener Suche weichen */
+  @media (max-width:699px){                            /* am Handy ist kein Platz fuer beides */
+    .sticky.scrolled .brand{display:none}
+    .skpis{gap:4px}
+    .skpi{padding:3px 5px 4px}
+    .skpi .v{font-size:11px}
+    .skpi .k{font-size:8.5px}
+  }
   @supports (backdrop-filter:blur(8px)){ .sticky{backdrop-filter:blur(8px)} }
-  .skpi{display:flex;flex-direction:column;line-height:1.15;min-width:0}
-  .skpi .k{font-size:9.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
-  .skpi .v{font-size:13px;font-weight:700;white-space:nowrap}
-  .skpis{display:none;gap:14px;flex:1 1 auto;min-width:0;overflow:hidden}
+  /* Kennzahlen mittig, in denselben Kästen wie auf den Karten */
+  .skpi{display:flex;flex-direction:column;line-height:1.15;min-width:0;
+    background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:4px 9px 5px}
+  .skpi .k{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+  .skpi .v{font-size:12.5px;font-weight:600;white-space:nowrap}
+  .skpis{display:none;gap:6px;margin:0 auto;min-width:0}
   .sticky.scrolled .skpis{display:flex}
   .sticky input{flex:0 1 190px;min-width:0;background:var(--card2);border:1px solid var(--line);
     color:var(--txt);border-radius:9px;padding:7px 10px;font-size:13px;display:none}
   .sticky.q input{display:block}
   .sticky.q .skpis{display:none!important}
+  /* Beide Knoepfe exakt gleich gross und quadratisch, Zeichen optisch mittig */
   .sfind{background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:9px;
-    padding:6px 10px;font-size:13px;flex:0 0 auto;cursor:pointer}
-  .sfind.gear{font-size:18px;line-height:1;padding:5px 10px}
+    width:34px;height:34px;padding:0;font-size:14px;flex:0 0 auto;cursor:pointer;
+    display:inline-flex;align-items:center;justify-content:center;line-height:1}
+  .sfind.gear{font-size:17px}
   @media (min-width:700px){                      /* Am Rechner ist Platz: Feld gleich sichtbar */
     .sticky input{display:block}
     .sticky.q.scrolled .skpis{display:flex!important}
@@ -582,14 +597,14 @@ function render(){
       <div class="spacer"></div>
       ${syncReady()?`<button class="btn ghost" style="padding:5px 10px" onclick="fullSync(true)">⇅ Sync</button>`:""}
       ${hasSym?`<button id="refreshBtn" class="btn ghost" style="padding:5px 10px" onclick="refreshPrices()">⟳ Kurse</button>`:""}
-      ${state.positions.length>8?`<button class="btn ghost" style="padding:5px 10px" onclick="toggleSearch()" aria-label="Suchen">🔍</button>`:""}</div>
+</div>
     ${(()=>{                                   // Bestand zuerst: was ist das Depot wert, und wie viel liegt still?
       const wert=tCur+tCash; if(!(wert>0)) return "";
       const q=Math.max(0,Math.min(100, tCur/wert*100));
       return `<div class="hero"><span class="k">Depotwert</span><span class="v">${feur(wert)}</span></div>
       <div class="split"><i class="inv" style="width:${q}%"></i><i class="cash" style="width:${100-q}%"></i></div>
       <div class="splitlab"><span><i class="dot inv"></i>Investiert <b>${feur(tCur)}</b></span>
-        ${tCash?`<span><i class="dot cash"></i>Cash <b>${feur(tCash)}</b> · ${pct.format(100-q)} %</span>`:""}</div>`;
+        ${tCash?`<span><i class="dot cash"></i>Cash <b>${feur(tCash)}</b> <span class="badge">${pct.format(100-q)} %</span></span>`:""}</div>`;
     })()}
     ${(()=>{                                   // Jahr gewählt → Jahres-Zahlen statt Depot-Zahlen
       const jy=state.settings.jahr||"";
@@ -761,7 +776,7 @@ function esBar(m){
   else if(Math.abs(pN-pE)<30){
     // Symbole dürfen überlappen – Einstieg (grau) und aktueller Kurs (weiß) nebeneinander, zentriert auf die Marker-Mitte
     const mid=(pE+pN)/2;
-    topLabs=`<div class="esb-lab top pair" style="left:${mid}%;transform:translateX(-50%)"><span class="pl e"><span class="n">Einstieg</span> <span class="v">${feur(E)}</span></span><span class="pl j"><span class="v">${feur(N)}</span></span></div>`;
+    topLabs=`<div class="esb-lab top pair" style="${anker(mid)}"><span class="pl e"><span class="n">Einstieg</span> <span class="v">${feur(E)}</span></span><span class="pl j"><span class="v">${feur(N)}</span></span></div>`;
   }
   else { topLabs=eLab(pE)+jLab(pN); }
   const beLab=`<div class="esb-lab bot be" style="${anker(pB)}"><span class="n">Break-even</span> <span class="v">${feur(B)}</span></div>`;
@@ -802,12 +817,12 @@ function renderPos(p,m,idx){
   const el=document.createElement("div");
   const stopVal=num(p.stop);
   const belowStop=m.hasKurs && stopVal>0 && m.kurs<stopVal;   // Kurs unter Stop
-  el.className="pos"+(m.oversell?" warn":"")+(belowStop?" stop":"");
+  el.className="pos"+(m.oversell?" warn":"")+(belowStop?" stop":"")+((state.settings.collapsed||{})[p.id]?" zu":"");
   el.dataset.pos=p.id;   // Anker, um die Ansicht beim Neuzeichnen an Ort und Stelle zu halten
   const fxNote = p.fxFrom?` · <span class="lbl">≈ aus ${esc(p.fxFrom)}</span>`:"";
-  const tsNote = (p.kursTime&&(Date.now()-p.kursTime>18e5))?` · <span class="lbl">${esc(kursTimeLbl(p.kursTime))}</span>`:"";
+  const tsNote = (p.kursTime&&(Date.now()-p.kursTime>18e5))?` <span class="lbl">(${esc(kursTimeLbl(p.kursTime))})</span>`:"";
   const openLine = m.openQty>0
-    ? `<span><b>${numf.format(m.openQty)}</b> St. · Ø ${feur(m.avg)}${fxNote}${tsNote}</span>`
+    ? `<span><b>${numf.format(m.openQty)}</b> St. · Ø <b>${feur(m.avg)}</b>${fxNote}${tsNote}</span>`
     : `<span>Position geschlossen</span>`;
   // Transaktionsliste
   let txHtml="";
@@ -870,8 +885,8 @@ function renderPos(p,m,idx){
   el.innerHTML=`
     <div class="pos-head" onclick="toggleCollapse('${p.id}')">
       <div class="ph-left">
-        <div class="titel">${esc(p.titel||"(ohne Titel)")}${p.broker?` <span class="badge">${esc(p.broker)}</span>`:""}${deadBadge}<span class="chev">${collapsed?"▸":"▾"}</span></div>
-        <div class="ph-sub">${subLeft}${anteil}${stopBadge}</div>
+        <div class="titel">${esc(p.titel||"(ohne Titel)")}${p.broker?` <span class="badge">${esc(p.broker)}</span>`:""}${anteil}${deadBadge}</div>
+        <div class="ph-sub">${subLeft}${stopBadge}</div>
       </div>
       ${right}
       <button class="txedit ph-edit" onclick="event.stopPropagation();openPos('${p.id}')">✎</button>
