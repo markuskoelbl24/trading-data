@@ -187,10 +187,10 @@
      weiter unten, sonst gewinnen die (gleiche Gewichtung, spaeter im Stylesheet). */
   @media (max-width:699px){
     .sticky.scrolled .brand{display:none}
-    .sticky .skpis{gap:4px}
-    .sticky .skpi{padding:3px 5px 4px}
-    .sticky .skpi .v{font-size:10px;word-spacing:-2.5px}   /* Euro dichter an die Zahl */
-    .sticky .skpi .k{font-size:8px}
+    .sticky .skpis{gap:5px;justify-content:flex-start}   /* mitwandernd, linksbuendig */
+    .sticky .skpi{padding:3px 7px 4px}
+    .sticky .skpi .v{font-size:12px;word-spacing:-2.5px}   /* Euro dichter an die Zahl */
+    .sticky .skpi .k{font-size:8.5px}
   }
   @supports (backdrop-filter:blur(8px)){ .sticky{backdrop-filter:blur(8px)} }
   /* Kennzahlen mittig, in denselben Kästen wie auf den Karten */
@@ -199,7 +199,7 @@
   .skpi .k{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
   .skpi .v{font-size:12.5px;font-weight:600;white-space:nowrap}
   .skpis{display:none;gap:6px;flex:1 1 auto;justify-content:center;min-width:0}
-  @media (min-width:700px){        /* echt auf Seitenmitte, nicht mittig zwischen Titel und Suche */
+  @media (min-width:700px){   /* nur wo Platz ist: echt auf Seitenmitte */
     .sticky.scrolled .skpis{position:absolute;left:50%;transform:translateX(-50%);flex:0 0 auto}
   }
   /* Suche und Setup bleiben immer am rechten Rand — auch wenn die Kennzahlen fehlen */
@@ -373,6 +373,14 @@ function emoney(n){ return _cf(_dispCur).format(n); }
 function feur(n){return (n==null||isNaN(n))?"–":emoney(n);}
 function fpct(n){return (n==null||isNaN(n))?"–":(n>=0?"+":"")+pct.format(n)+" %";}
 function signEur(n){return (n>=0?"+":"")+emoney(n);}
+/* Schmale Ansicht: in der Leiste reichen volle Euro — die Cents stehen in der Kachel darunter.
+   Dadurch passen die drei Kaesten in die echte Seitenmitte, ohne die Knoepfe zu ueberdecken. */
+const _schmal=()=>window.matchMedia("(max-width:699px)").matches;
+let _rundfmt=null;
+function signEurKurz(n){
+  if(!_rundfmt) _rundfmt=new Intl.NumberFormat("de-DE",{style:"currency",currency:"EUR",maximumFractionDigits:0});
+  return (n>=0?"+":"")+_rundfmt.format(n);
+}
 function cls(n){return n>0?"green":(n<0?"red":"");}
 function fdate(iso){if(!iso)return"";const[y,m,d]=iso.split("-");return d+"."+m+"."+y.slice(2);}
 function daysBetween(a,b){return Math.round((new Date(b)-new Date(a))/864e5);}
@@ -569,7 +577,10 @@ function syncBar(){
   bar.classList.toggle("scrolled", tot.getBoundingClientRect().bottom < bar.offsetHeight+4);
 }
 window.addEventListener("scroll", syncBar, {passive:true});
-window.addEventListener("resize", syncBar);
+let _warSchmal=_schmal();
+window.addEventListener("resize", ()=>{ syncBar();
+  if(_schmal()!==_warSchmal){ _warSchmal=_schmal(); render(); }   // Schreibweise wechselt mit der Breite
+});
 
 /* ---------- Render ---------- */
 function render(){
@@ -706,7 +717,8 @@ function render(){
   const jy0=state.settings.jahr||"";
   _dispCur="EUR";   // Summen sind immer in Euro — sonst erbt die Leiste die Waehrung der zuletzt gezeichneten Karte
   const _ys=jy0?yearStats(jy0):null;
-  const setv=(id,val,klass)=>{const e=document.getElementById(id); if(e){e.textContent=signEur(val); e.className="v "+cls(klass===undefined?val:klass);}};
+  const _f=_schmal()?signEurKurz:signEur;
+  const setv=(id,val,klass)=>{const e=document.getElementById(id); if(e){e.textContent=_f(val); e.className="v "+cls(klass===undefined?val:klass);}};
   if(document.getElementById("sk_r")){
     setv("sk_r", _ys?_ys.real:tReal);
     setv("sk_u", _ys?_ys.wert:tUnreal);
