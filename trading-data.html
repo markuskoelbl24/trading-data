@@ -56,7 +56,8 @@
   .pos-head{display:flex;align-items:flex-start;gap:10px}
   .badge{font-family:var(--f-cond);letter-spacing:.06em;font-variant-numeric:tabular-nums;font-size:11px;color:var(--muted);background:var(--card2);border:1px solid var(--line);
     padding:2px 8px;border-radius:999px;white-space:nowrap}
-  .titel{font-size:17px;font-weight:700;line-height:1.15}
+  .titel{font-size:17px;font-weight:700;line-height:1.35}   /* war 1.15: beim Umbruch stiessen die Marken an */
+  .titel .badge{vertical-align:1px}
   .kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin:12px 0 4px}
   .kpi{background:var(--card2);border:1px solid var(--line);border-radius:11px;padding:9px 9px 8px}
   .kpi .k{font-size:9.5px;color:var(--muted);margin-bottom:4px}
@@ -182,12 +183,14 @@
   .sticky .brand{font-size:15px;font-weight:700;flex:0 0 auto;white-space:nowrap}
   .sticky .brand span{font-size:11px;color:var(--muted);font-weight:400;margin-left:3px}
   .sticky.q .brand{display:none}                      /* bei offener Suche weichen */
-  @media (max-width:699px){                            /* am Handy ist kein Platz fuer beides */
+  /* Am Handy ist kein Platz fuer beides. Die Auswahl muss GENAUER sein als die Grundregeln
+     weiter unten, sonst gewinnen die (gleiche Gewichtung, spaeter im Stylesheet). */
+  @media (max-width:699px){
     .sticky.scrolled .brand{display:none}
-    .skpis{gap:4px}
-    .skpi{padding:3px 5px 4px}
-    .skpi .v{font-size:11px}
-    .skpi .k{font-size:8.5px}
+    .sticky .skpis{gap:4px}
+    .sticky .skpi{padding:3px 5px 4px}
+    .sticky .skpi .v{font-size:10px;word-spacing:-2.5px}   /* Euro dichter an die Zahl */
+    .sticky .skpi .k{font-size:8px}
   }
   @supports (backdrop-filter:blur(8px)){ .sticky{backdrop-filter:blur(8px)} }
   /* Kennzahlen mittig, in denselben Kästen wie auf den Karten */
