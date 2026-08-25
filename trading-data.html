@@ -536,7 +536,7 @@ function unrealAtYearEnd(pos,y){
 }
 function yearStats(y){
   const fx=state.settings.fxRates||{};
-  let real=0,divs=0,steuer=0,trades=0,wert=0,fehlt=0,mitKurs=0;
+  let real=0,divs=0,steuer=0,trades=0,wert=0,fehlt=0,mitKurs=0,baseWert=0;
   const vor=String(+y-1);
   for(const p of state.positions){
     const cur=(p.currency||"EUR").toUpperCase();
@@ -559,8 +559,14 @@ function yearStats(y){
     const uEnd=unrealAtYearEnd(p,y), uVor=unrealAtYearEnd(p,vor);
     if(uEnd==null || uVor==null){ fehlt++; continue; }      // Jahresend-Kurs fehlt → ehrlich ausweisen
     wert+=(uEnd-uVor)*rate; mitKurs++;
+    // Depotwert dieser Position zum Jahresanfang -> Basis für die Jahres-Prozentzahl.
+    // Nutzt denselben Jahresanfangs-Kurs wie uVor -> nur wenn wert zählt, zählt auch die Basis.
+    const aVor=stateAsOf(p,vor+"-12-31");
+    if(aVor.openQty>1e-9) baseWert += aVor.openQty*((p.yearPx||{})[vor])*rate;
   }
-  return {real,divs,steuer,trades,wert,fehlt,mitKurs,gesamt:real+divs+wert};
+  const gesamt=real+divs+wert;
+  const gesamtPct=baseWert>0?gesamt/baseWert*100:NaN;
+  return {real,divs,steuer,trades,wert,fehlt,mitKurs,gesamt,baseWert,gesamtPct};
 }
 function setJahr(y){ state.settings.jahr=y; save(); render(); }
 
@@ -607,7 +613,7 @@ function render(){
     return;
   }
   // Portfolio-Summe
-  let tReal=0,tUnreal=0,tDiv=0,tDivOff=0,tCur=0,tGes=0,tSteuer=0,tCash=0,tZins=0,tZinsOff=0;
+  let tReal=0,tUnreal=0,tDiv=0,tDivOff=0,tCur=0,tGes=0,tSteuer=0,tCash=0,tZins=0,tZinsOff=0,tBuyCost=0;
   const _fx=state.settings.fxRates||{};   // EUR je 1 Einheit Fremdwährung (aus letztem Kurs-Abruf)
   const metrics=state.positions.map(p=>{const m=compute(p);
     const cur=(p.currency||"EUR").toUpperCase(); const rate=cur==="EUR"?1:(_fx[cur]>0?_fx[cur]:1); m._eur=rate;
@@ -616,7 +622,8 @@ function render(){
     else { tDiv+=(m.divs+m.archivDivs)*rate; if(p.divOff)tDivOff+=m.divs*rate; }
     tSteuer+=m.steuer*rate;
     if(m.isCash){ tCash+=m.curVal*rate; } else if(m.hasKurs){ tUnreal+=m.unreal*rate; tCur+=m.curVal*rate; }
-    tGes+=m.gesamt*rate;return m;});
+    tGes+=m.gesamt*rate; tBuyCost+=m.buyCostAll*rate; return m;});
+  const tGesPct=tBuyCost>0?tGes/tBuyCost*100:NaN;   // dieselbe Basis wie beim einzelnen Titel (gesamtPct)
   _depotWert=tCur+tCash;   // Bezugsgröße für den Prozentanteil je Position
   const hasSym=metrics.some((m,i)=>(state.positions[i].symbol||"").trim()&&m.openQty>0);
   const upd=state.settings.pricesUpdated;
@@ -645,13 +652,13 @@ function render(){
       if(!jy) return `<div class="kpis">
       <div class="kpi"><div class="k">Realisiert</div><div class="v ${cls(tReal)}">${signEur(tReal)}</div></div>
       <div class="kpi"><div class="k">Unrealisiert</div><div class="v ${cls(tUnreal)}">${signEur(tUnreal)}</div></div>
-      <div class="kpi"><div class="k">Gesamt</div><div class="v ${cls(tGes)}">${signEur(tGes)}</div></div>
+      <div class="kpi"><div class="k">Gesamt</div><div class="v ${cls(tGes)}">${signEur(tGes)}</div>${isNaN(tGesPct)?"":`<div class="v2">${fpct(tGesPct)}</div>`}</div>
     </div>`;
       const y=yearStats(jy);
       return `<div class="kpis">
       <div class="kpi"><div class="k">Realisiert ${jy}</div><div class="v ${cls(y.real)}">${signEur(y.real)}</div></div>
       <div class="kpi"><div class="k">Wertänderung ${jy}</div><div class="v ${cls(y.wert)}">${y.mitKurs?signEur(y.wert):"–"}</div></div>
-      <div class="kpi"><div class="k">Gesamt ${jy}</div><div class="v ${cls(y.gesamt)}">${signEur(y.gesamt)}</div></div>
+      <div class="kpi"><div class="k">Gesamt ${jy}</div><div class="v ${cls(y.gesamt)}">${signEur(y.gesamt)}</div>${isNaN(y.gesamtPct)?"":`<div class="v2">${fpct(y.gesamtPct)}</div>`}</div>
     </div>
     <div class="hint" style="margin-top:6px">${y.trades} abgeschlossene Trade(s) · Dividenden ${feur(y.divs)} · Steuer ${feur(y.steuer)}${
       y.fehlt?` · <span class="red">${y.fehlt} Position(en) ohne Jahresend-Kurs</span> — die Wertänderung ist dort noch nicht drin (Kurse werden ab jetzt je Jahr festgehalten).`:""}</div>`;
