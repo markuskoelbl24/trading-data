@@ -6,6 +6,12 @@ Läuft als statische Seite über GitHub Pages, wird v. a. am Handy (iOS Safari) 
 Positionen werden optional über ein privates GitHub-Repo zwischen Geräten synchronisiert
 (nur Daten + Ansichtseinstellungen, **niemals** Token/API-Keys).
 
+**Dieses Repo ist öffentlich.** Persönlicher Anlage-Kontext — Strategie, Regeln,
+Fehlermuster, Investorenprofil, Depotstände, Watchlist — gehört nicht hierher, sondern
+in das private Repo [`investing-context`](https://github.com/markuskoelbl24/investing-context);
+von dort lesen die Aktien-Skills. Die `.gitignore`-Einträge für `investing-context/`,
+`*.csv` und `trading_*.json` bleiben als Netz für lokale Dateien bestehen.
+
 ## Arbeitsweise: immer aus Nutzersicht mitdenken
 Nicht nur die gestellte Aufgabe abarbeiten, sondern bei jeder Änderung einen Schritt
 zurücktreten und aktiv aus der Perspektive der Person denken, die das Tool täglich
