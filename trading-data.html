@@ -1351,6 +1351,44 @@ async function ghPut(payload, sha){
   try{ return JSON.parse(txt).content.sha; }catch(e){ return null; }
 }
 
+/* ---------- IBKR-Wochenautomatik manuell anstoßen ----------
+   Die eigentliche Automatik läuft als GitHub Action im daten-Repo (Flex Web Service,
+   samstags). Dieser Button ruft nur workflow_dispatch auf denselben Sync-Zugang —
+   IBKR bekommt das Token nie zu Gesicht, das läuft serverseitig in der Action. */
+function ibkrLastLbl(){
+  const t=state.settings.ibkrTriggeredAt;
+  if(!t) return "Noch nicht manuell ausgelöst — läuft sonst nur samstags.";
+  return "Zuletzt manuell ausgelöst: "+new Date(t).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})+" Uhr";
+}
+async function triggerIbkrPull(){
+  const c=ghCfg();
+  if(!c.token||!c.repo){ alert(`Erst oben unter „Sync über GitHub" Repo + Token eintragen — der IBKR-Anstoß nutzt dieselben Zugangsdaten (Repo daten).`); return; }
+  const last=state.settings.ibkrTriggeredAt;
+  if(last && Date.now()-last<20*3600*1000){
+    const std=((Date.now()-last)/3600000).toFixed(1);
+    if(!confirm(`Zuletzt vor ${std} Std. ausgelöst. IBKR drosselt bei zu häufigen Abrufen (Fehler 1001/1025) — trotzdem jetzt erneut anstoßen?`)) return;
+  }
+  const [owner,repo]=c.repo.split("/");
+  const btn=document.getElementById("ibkrBtn"); if(btn){btn.disabled=true;btn.textContent="… wird gestartet";}
+  try{
+    const url=`https://api.github.com/repos/${owner}/${repo}/actions/workflows/ibkr-weekly.yml/dispatches`;
+    const r=await fetch(url,{method:"POST",headers:{Authorization:"Bearer "+c.token,Accept:"application/vnd.github+json"},
+      body:JSON.stringify({ref:c.branch})});
+    if(r.status===204){
+      state.settings.ibkrTriggeredAt=Date.now(); save();
+      toast(`✓ IBKR-Abruf gestartet — dauert 1–2 Min, danach „⇅ Sync" zum Nachladen.`);
+      openBackup();
+    } else if(r.status===403){
+      alert(`Kein Zugriff (403). Der Token braucht zusätzlich die Berechtigung „Actions: Read and write" auf dem daten-Repo — im Fine-grained-Token nachtragen (GitHub → Settings → Developer settings → Tokens), sonst neu erstellen.`);
+    } else if(r.status===404){
+      alert(`Workflow nicht gefunden (404). Prüfen: Repo „${c.repo}", Datei .github/workflows/ibkr-weekly.yml, Branch „${c.branch}".`);
+    } else {
+      alert("Fehlgeschlagen ("+r.status+"): "+(await proxyErrTxt(r)));
+    }
+  }catch(e){ alert("Netzwerkfehler: "+(e.message||e)); }
+  finally{ if(btn){btn.disabled=false;btn.textContent="⇣ IBKR jetzt ziehen";} }
+}
+
 // Vergleicht zwei Sync-Nutzlasten ohne den volatilen Zeitstempel → true, wenn inhaltlich gleich
 function _syncUnchanged(a,b){ if(!a||!b) return false; const n=o=>{const x={...o}; delete x.syncedAt; return JSON.stringify(x);}; try{ return n(a)===n(b); }catch(e){ return false; } }
 // Voll-Sync: holen → mergen → zurückschreiben; bei sha-Konflikt (409) mit frischer sha erneut versuchen
@@ -1587,6 +1625,12 @@ function openBackup(){
       <div class="sheet-actions" style="margin-top:4px"><button class="btn sec" style="flex:1" onclick="document.getElementById('tdcsv').click()">⤒ CSV wählen</button></div>
       <input type="file" id="tdcsv" accept=".csv,text/csv" style="display:none" onchange="tdCsvPick(this)">
       <div class="hint" style="margin:6px 0 0">TR-App → Export → CSV. Neue Trades werden ergänzt, Steuer nachgetragen (per transaction_id, keine Dubletten). Vorschau vor dem Übernehmen.</div>
+    </div>
+    <div class="field" style="margin-bottom:14px">
+      <label>IBKR (Flex Web Service)</label>
+      <div class="sheet-actions" style="margin-top:4px"><button id="ibkrBtn" class="btn sec" style="flex:1" onclick="triggerIbkrPull()">⇣ IBKR jetzt ziehen</button></div>
+      <div class="hint" style="margin:6px 0 0">Läuft automatisch samstags per GitHub Action. Dieser Button stößt denselben Lauf sofort an — absichtlich nicht öfter als nötig, IBKR drosselt sonst. Danach kurz warten und „⇅ Sync".</div>
+      <div class="hint" style="margin:4px 0 0">${esc(ibkrLastLbl())}</div>
     </div>
     <div class="field">
       <label>Live-Kurse</label>
