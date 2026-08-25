@@ -302,7 +302,7 @@
     <input id="q" type="search" inputmode="search" placeholder="Position suchen…" autocomplete="off"
            oninput="setQuery(this.value)" onkeydown="if(event.key==='Escape')clearQuery()">
     <button class="sfind" onclick="toggleSearch()" aria-label="Suchen">🔍</button>
-    <button class="sfind gear" onclick="openBackup()" aria-label="Setup">⚙︎</button>
+    <button class="sfind gear" onclick="toggleBackup()" aria-label="Setup">⚙︎</button>
   </div>
 </div>
 <div id="total" class="total"></div>
@@ -1388,7 +1388,7 @@ function setSyncStatus(t){ const e=document.getElementById("syncStatus"); if(e)e
 
 /* ---------- Modal-Infrastruktur ---------- */
 const ov=document.getElementById("overlay"), sheet=document.getElementById("sheet");
-function openSheet(html){sheet.innerHTML=html;ov.classList.add("on");}
+function openSheet(html){sheet.innerHTML=html;sheet.dataset.kind="";ov.classList.add("on");}
 function closeSheet(){ov.classList.remove("on");sheet.innerHTML="";}
 let ovDownBd=false;
 ov.addEventListener("pointerdown",e=>{ovDownBd=(e.target===ov);});
@@ -1575,6 +1575,12 @@ function delDiv(pid,did){const p=find(pid);state.tombstones[did]=Date.now();p.di
 function openBackup(){
   openSheet(`
     <h2>Backup &amp; Einstellungen</h2>
+    <div class="field" style="margin-bottom:12px">
+      <label>Trades importieren (Trade Republic CSV)</label>
+      <div class="sheet-actions" style="margin-top:4px"><button class="btn sec" style="flex:1" onclick="document.getElementById('tdcsv').click()">⤒ CSV wählen</button></div>
+      <input type="file" id="tdcsv" accept=".csv,text/csv" style="display:none" onchange="tdCsvPick(this)">
+      <div class="hint" style="margin:6px 0 0">TR-App → Export → CSV. Neue Trades werden ergänzt, Steuer nachgetragen (per transaction_id, keine Dubletten). Vorschau vor dem Übernehmen.</div>
+    </div>
     <div class="field">
       <label>Live-Kurse</label>
       <div class="hint"><b>Yahoo Finance</b> über Proxy, kein API-Key. Fremdwährungen automatisch in €.</div>
@@ -1612,12 +1618,6 @@ function openBackup(){
       </div>
       <div class="hint" style="margin-top:8px">${state.settings.syncedAt?"Zuletzt: "+new Date(state.settings.syncedAt).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})+" Uhr":"Noch nie synchronisiert."}</div>
     </div>
-    <div class="field" style="margin-bottom:12px">
-      <label>Trades importieren (Trade Republic CSV)</label>
-      <div class="sheet-actions" style="margin-top:4px"><button class="btn sec" style="flex:1" onclick="document.getElementById('tdcsv').click()">⤒ CSV wählen</button></div>
-      <input type="file" id="tdcsv" accept=".csv,text/csv" style="display:none" onchange="tdCsvPick(this)">
-      <div class="hint" style="margin:6px 0 0">TR-App → Export → CSV. Neue Trades werden ergänzt, Steuer nachgetragen (per transaction_id, keine Dubletten). Vorschau vor dem Übernehmen.</div>
-    </div>
     <div class="sheet-actions" style="margin-bottom:10px">
       <button class="btn" onclick="exportJson()">⤓ Export (.json)</button>
       <button class="btn sec" onclick="document.getElementById('imp').click()">⤒ Import</button>
@@ -1627,6 +1627,13 @@ function openBackup(){
     <div class="sheet-actions" style="margin-top:14px">
       <button class="btn sec" style="flex:1" onclick="closeSheet()">Schließen</button>
     </div>`);
+  sheet.dataset.kind="setup";
+}
+// Zahnrad schaltet um statt nur zu öffnen — versehentliches Doppelklicken schließt wieder,
+// statt das Sheet nur neu aufzubauen.
+function toggleBackup(){
+  if(ov.classList.contains("on") && sheet.dataset.kind==="setup"){ closeSheet(); return; }
+  openBackup();
 }
 function toggleAuto(){state.settings.autoRefresh=!state.settings.autoRefresh;save();startPriceTimer();openBackup();render();}
 function saveProxy(){state.settings.proxy=val("f_proxy").trim();save();toast(state.settings.proxy?"✓ Proxy gespeichert":"Proxy geleert – Gemeinschafts-Proxys");openBackup();}
