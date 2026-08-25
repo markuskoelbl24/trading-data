@@ -406,10 +406,14 @@ function compute(pos){
     const bal=num(pos.cashBetrag)||0;
     const divs=(pos.div||[]).reduce((s,d)=>s+(num(d.netto)||0),0);
     const divCounted=!pos.divOff && !state.settings.zinsGlobalOff;   // eigener Schalter fuer Zinsen
+    // TR bucht ueber "Tax Optimisation" spaeter Steuer aus dem Verlusttopf zurueck (oder selten nach) —
+    // das ist keinem Titel zuzuordnen, sondern reines Verrechnungskonto-Geschehen. + = Erstattung.
+    const taxOptSum=(pos.taxOpt||[]).reduce((s,t)=>s+(num(t.betrag)||0),0);
+    const steuerCounted=!!state.settings.steuerGlobalOn;
     return {tx:[],realized:0,openQty:0,openCost:0,avg:0,curVal:bal,unreal:0,divs,
-      gesamt:(divCounted?divs:0),hasKurs:true,oversell:false,buyCostAll:0,
+      gesamt:(divCounted?divs:0)+(steuerCounted?taxOptSum:0),hasKurs:true,oversell:false,buyCostAll:0,
       gesamtPct:NaN,unrealPct:NaN,jahr:NaN,first:"",last:"",closed:false,days:0,perTx:{},kurs:bal,
-      erstEinstieg:NaN,breakEven:NaN,beDelta:NaN,bePct:NaN,steuer:0,steuerCounted:false,isCash:true,
+      erstEinstieg:NaN,breakEven:NaN,beDelta:NaN,bePct:NaN,steuer:-taxOptSum,steuerCounted,taxOpt:taxOptSum,isCash:true,
       archivReal:0,archivDivs:0};
   }
   // Transaktionen chronologisch (stabil nach Eingabereihenfolge)
@@ -678,7 +682,12 @@ function render(){
         const aus=state.settings.zinsGlobalOff;
         const zaehlt=tZins-tZinsOff;
         return `<button class="divchip ${aus?"off":""}" onclick="toggleZinsGlobal()" title="Zinsen auf das Guthaben in Gesamt einrechnen"><span class="cbox">${aus?"":"✓"}</span><span class="chiptxt">Zinsen <span class="amt green">+${emoney(aus?tZins:zaehlt).replace("+","")}</span>${(!aus&&tZinsOff)?` <span class="sub">von ${feur(tZins)}</span>`:""}</span></button>`;})():""}
-      ${tSteuer?`<button class="divchip ${state.settings.steuerGlobalOn?"":"off"}" onclick="toggleSteuerGlobal()" title="Bereits einbehaltene Steuer (v. a. Trade Republic) abziehen — IBKR fehlt darin"><span class="cbox">${state.settings.steuerGlobalOn?"✓":""}</span><span class="chiptxt">Steuer <span class="amt red">−${emoney(tSteuer).replace("-","")}</span></span></button>`:""}
+      ${tSteuer?(()=>{
+        // tSteuer kann durch TR-„Tax Optimisation" (Verlustverrechnung, netto vom Verrechnungskonto)
+        // negativ werden, wenn spaeter mehr erstattet als je einbehalten wurde — dann zeigt der Chip
+        // „Steuer" mit + statt mit dem fest verdrahteten Minus.
+        const erstattung=tSteuer<0;
+        return `<button class="divchip ${state.settings.steuerGlobalOn?"":"off"}" onclick="toggleSteuerGlobal()" title="Bereits einbehaltene Steuer (v. a. Trade Republic) abziehen, TR-Steueroptimierung netto eingerechnet — IBKR fehlt darin"><span class="cbox">${state.settings.steuerGlobalOn?"✓":""}</span><span class="chiptxt">Steuer <span class="amt ${erstattung?"green":"red"}">${erstattung?"+":"−"}${emoney(Math.abs(tSteuer))}</span></span></button>`;})():""}
     </div>`:""}
       <div class="spacer"></div>
       <span class="fussmeta">${hasSym&&upd?`Kurse ${new Date(upd).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}`:""}
@@ -916,11 +925,13 @@ function renderPos(p,m,idx){
     // zwei Zeilen. Betrag und Zinsen stehen jeweils genau EINMAL.
     const zaehlt=!p.divOff && !state.settings.zinsGlobalOff;
     const hinweis=state.settings.zinsGlobalOff?" · oben für alle abgeschaltet":"";
+    const taxZaehlt=!!state.settings.steuerGlobalOn;
     el.innerHTML=`
       <div class="pos-head cash">
         <div class="ph-left">
           <div class="titel">${titelMitMarken(p.titel||"Verrechnungskonto",(p.broker?` <span class="badge">${esc(p.broker)}</span>`:"")+anteil)}</div>
           <div class="ph-sub">${m.divs?`<button class="divchip ${zaehlt?"":"off"}" onclick="toggleDivOff('${p.id}')" title="Zinsen in Gesamt mitzählen${hinweis}"><span class="cbox">${zaehlt?"✓":""}</span>Zinsen <span class="amt green">+${emoney(m.divs).replace("+","")}</span></button>`:""}
+            ${m.taxOpt?`<button class="divchip ${taxZaehlt?"":"off"}" onclick="toggleSteuerGlobal()" title="TR-Steueroptimierung (Verlustverrechnung, netto) in Gesamt mitzählen"><span class="cbox">${taxZaehlt?"✓":""}</span>Steuer-Opt. <span class="amt ${cls(m.taxOpt)}">${signEur(m.taxOpt)}</span></button>`:""}
             <button class="btn sec sm" onclick="openDiv('${p.id}')">+ Zins</button></div>
         </div>
         <div class="ph-right"><div class="ph-kurs">${feur(m.curVal)}</div></div>
@@ -1304,6 +1315,7 @@ function mergeStates(local,remote){
     const merged={...base};
     merged.tx  = mergeList(L&&L.tx,  R&&R.tx,  tomb);
     merged.div = mergeList(L&&L.div, R&&R.div, tomb);
+    merged.taxOpt = mergeList(L&&L.taxOpt, R&&R.taxOpt, tomb);
     // Position gelöscht? (Tombstone neuer als letzte Änderung UND keine überlebenden Buchungen erzwingen Behalt)
     if(tomb[id] && tomb[id]>=u(base)) continue;
     positions.push(merged);
@@ -1868,15 +1880,22 @@ function tdBuildPlan(text){
       fee:Math.abs(tdCsvNum(r.fee)||0), tax:Math.abs(tdCsvNum(r.tax)||0), amount:Math.abs(tdCsvNum(r.amount)||0) }); }
   // Kontostand: Betrag + Steuer + Gebühr über ALLE Zeilen. Achtung, das Vorzeichen steht
   // in der CSV — Steuer-Erstattungen (Verlustverrechnung) sind positiv und werden gutgeschrieben.
-  let saldo=0, zinsen=[];
+  let saldo=0, zinsen=[], steueropt=[];
   for(const r of rows){
     saldo += (tdCsvNum(r.amount)||0) + (tdCsvNum(r.tax)||0) + (tdCsvNum(r.fee)||0);
-    if((r.type||"").toUpperCase()==="INTEREST_PAYMENT"){
+    const ty=(r.type||"").toUpperCase();
+    if(ty==="INTEREST_PAYMENT"){
       const netto=(tdCsvNum(r.amount)||0)+(tdCsvNum(r.tax)||0);
       if(netto) zinsen.push({datum:(r.date||"").slice(0,10), netto, trid:(r.transaction_id||"").trim()});
     }
+    // "Tax Optimisation": TR verrechnet spaeter Verluste gegen frueher einbehaltene Steuer —
+    // steht in der tax-Spalte, positiv = Erstattung, negativ = Nachbelastung. Keinem Titel zuzuordnen.
+    if(ty==="TAX_OPTIMIZATION"){
+      const betrag=tdCsvNum(r.tax)||0;
+      if(betrag) steueropt.push({datum:(r.date||"").slice(0,10), betrag, trid:(r.transaction_id||"").trim()});
+    }
   }
-  return {cand, unknown, skipped, noWP, total:rows.length, maxDate, saldo, zinsen}; }
+  return {cand, unknown, skipped, noWP, total:rows.length, maxDate, saldo, zinsen, steueropt}; }
 // Kern: einmal simulieren (mutate=false → Vorschau auf Klon) bzw. anwenden (mutate=true → echter Zustand)
 function tdSimulate(assign, mutate){
   const positions = mutate ? state.positions : JSON.parse(JSON.stringify(state.positions));
@@ -1977,6 +1996,11 @@ function tdKasseAktualisieren(plan){
   for(const z of (plan.zinsen||[])){
     if(z.trid && vorhanden.has(z.trid)) continue;
     (k.div||(k.div=[])).push({id:uid(),datum:z.datum,netto:fmtBetrag(z.netto),notiz:"Zinsen",trid:z.trid,_u:Date.now()});
+  }
+  const vorhandenTax=new Set((k.taxOpt||[]).map(d=>d.trid).filter(Boolean));
+  for(const s of (plan.steueropt||[])){
+    if(s.trid && vorhandenTax.has(s.trid)) continue;
+    (k.taxOpt||(k.taxOpt=[])).push({id:uid(),datum:s.datum,betrag:fmtBetrag(s.betrag),trid:s.trid,_u:Date.now()});
   }
   touch(k);
   return k.cashBetrag+" €";
