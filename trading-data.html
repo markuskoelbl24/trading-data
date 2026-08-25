@@ -613,7 +613,7 @@ function render(){
     return;
   }
   // Portfolio-Summe
-  let tReal=0,tUnreal=0,tDiv=0,tDivOff=0,tCur=0,tGes=0,tSteuer=0,tCash=0,tZins=0,tZinsOff=0,tBuyCost=0;
+  let tReal=0,tUnreal=0,tDiv=0,tDivOff=0,tCur=0,tGes=0,tSteuer=0,tCash=0,tZins=0,tZinsOff=0;
   const _fx=state.settings.fxRates||{};   // EUR je 1 Einheit Fremdwährung (aus letztem Kurs-Abruf)
   const metrics=state.positions.map(p=>{const m=compute(p);
     const cur=(p.currency||"EUR").toUpperCase(); const rate=cur==="EUR"?1:(_fx[cur]>0?_fx[cur]:1); m._eur=rate;
@@ -622,8 +622,12 @@ function render(){
     else { tDiv+=(m.divs+m.archivDivs)*rate; if(p.divOff)tDivOff+=m.divs*rate; }
     tSteuer+=m.steuer*rate;
     if(m.isCash){ tCash+=m.curVal*rate; } else if(m.hasKurs){ tUnreal+=m.unreal*rate; tCur+=m.curVal*rate; }
-    tGes+=m.gesamt*rate; tBuyCost+=m.buyCostAll*rate; return m;});
-  const tGesPct=tBuyCost>0?tGes/tBuyCost*100:NaN;   // dieselbe Basis wie beim einzelnen Titel (gesamtPct)
+    tGes+=m.gesamt*rate; return m;});
+  // NICHT die Kaufsumme aller Buchungen als Basis (wie bei der einzelnen Position) — bei wiederbespielten
+  // Positionen (Rebuys, Sparplan, reinvestierte Erlöse) zählt dasselbe Kapital dort mehrfach mit und
+  // verwässert die Quote über Jahre hinweg. Stattdessen: eingesetztes Kapital = Depotwert − Gesamt.
+  const tKapital=tCur+tCash-tGes;
+  const tGesPct=tKapital>0?tGes/tKapital*100:NaN;
   _depotWert=tCur+tCash;   // Bezugsgröße für den Prozentanteil je Position
   const hasSym=metrics.some((m,i)=>(state.positions[i].symbol||"").trim()&&m.openQty>0);
   const upd=state.settings.pricesUpdated;
