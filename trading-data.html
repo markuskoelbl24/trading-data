@@ -1893,11 +1893,16 @@ function tdBuildPlan(text){
       const netto=(tdCsvNum(r.amount)||0)+(tdCsvNum(r.tax)||0);
       if(netto) zinsen.push({datum:(r.date||"").slice(0,10), netto, trid:(r.transaction_id||"").trim()});
     }
-    // "Tax Optimisation": TR verrechnet spaeter Verluste gegen frueher einbehaltene Steuer —
-    // steht in der tax-Spalte, positiv = Erstattung, negativ = Nachbelastung. Keinem Titel zuzuordnen.
-    if(ty==="TAX_OPTIMIZATION"){
+    // Steuerbuchungen OHNE Trade-Bezug — laufen alle ueber dieselbe Liste am Verrechnungskonto:
+    //   TAX_OPTIMIZATION = spaetere Verlustverrechnung (positiv = Erstattung)
+    //   EARNINGS         = Vorabpauschale auf thesaurierende Fonds
+    //   TILG             = Steuer auf Tilgung/Rueckzahlung (haengt an der TILG-Zeile, nicht am Trade)
+    //   SEC_ACCOUNT      = Korrektur auf Depotebene
+    // Ohne diese fehlten 27.08.2026 rund 101 € Steuer im Abgleich gegen die TR-App.
+    const STEUERZEILEN={TAX_OPTIMIZATION:"Steueroptimierung", EARNINGS:"Vorabpauschale", TILG:"Tilgung", SEC_ACCOUNT:"Depotkonto"};
+    if(STEUERZEILEN[ty]){
       const betrag=tdCsvNum(r.tax)||0;
-      if(betrag) steueropt.push({datum:(r.date||"").slice(0,10), betrag, trid:(r.transaction_id||"").trim()});
+      if(betrag) steueropt.push({datum:(r.date||"").slice(0,10), betrag, trid:(r.transaction_id||"").trim(), notiz:STEUERZEILEN[ty]});
     }
   }
   return {cand, unknown, skipped, noWP, total:rows.length, maxDate, saldo, zinsen, steueropt}; }
@@ -1924,9 +1929,14 @@ function tdSimulate(assign, mutate){
     } else { if(bk==="TR" && !p.isin){ p.isin=c.isin; if(mutate)touch(p); } if(ticker && !p.symbol){ p.symbol=ticker; if(mutate)touch(p); } }
     if(!used[p.id])used[p.id]=new Set();
     if(c.kind==="dividende"){
-      const m=(p.div||[]).find(d=>!used[p.id].has(d.id)&&!d.trid&&(d.datum||"").slice(0,10)===c.datum&&Math.abs((num(d.netto)||0)-c.amount)<0.02);
-      if(m){ m.trid=c.trid; if(mutate)touch(m); used[p.id].add(m.id); backfill++; }
-      else { const d={id:uid(),datum:c.datum,netto:tdFmt(c.amount),notiz:"TR-Import",trid:c.trid,_u:now}; (p.div||(p.div=[])).push(d); used[p.id].add(d.id); added++; }   // alle Dividenden (per trid dublettensicher)
+      // NETTO heisst netto: die Quellensteuer steht in der tax-Spalte und muss abgezogen werden.
+      // Vorher landete hier der Bruttobetrag im Feld "netto" -> Dividenden dauerhaft zu hoch
+      // (bei Zinsen war es von Anfang an richtig). Gefunden 27.08.2026 beim TR-Abgleich.
+      const netto=c.amount-(c.tax||0);
+      const m=(p.div||[]).find(d=>!used[p.id].has(d.id)&&!d.trid&&(d.datum||"").slice(0,10)===c.datum&&(Math.abs((num(d.netto)||0)-netto)<0.02||Math.abs((num(d.netto)||0)-c.amount)<0.02));
+      if(m){ if(Math.abs((num(m.netto)||0)-c.amount)<0.02 && c.tax) m.netto=tdFmt(netto);   // alte Brutto-Buchung mitkorrigieren
+             m.trid=c.trid; if(mutate)touch(m); used[p.id].add(m.id); backfill++; }
+      else { const d={id:uid(),datum:c.datum,netto:tdFmt(netto),notiz:"TR-Import",trid:c.trid,_u:now}; (p.div||(p.div=[])).push(d); used[p.id].add(d.id); added++; }   // alle Dividenden (per trid dublettensicher)
     } else {
       const m=(p.tx||[]).find(t=>!used[p.id].has(t.id)&&!t.trid&&t.typ===c.kind&&(t.datum||"").slice(0,10)===c.datum&&Math.abs((num(t.stueck)||0)-c.stueck)<0.001&&Math.abs((num(t.kurs)||0)-c.kurs)<Math.max(0.02,c.kurs*0.01));
       if(m){ if(c.tax)m.steuer=tdFmt(c.tax); if(c.fee&&!(num(m.gebuehr)>0))m.gebuehr=tdFmt(c.fee); m.trid=c.trid; if(mutate)touch(m); used[p.id].add(m.id); backfill++; }
@@ -2015,7 +2025,7 @@ function tdKasseAktualisieren(plan){
   const vorhandenTax=new Set((k.taxOpt||[]).map(d=>d.trid).filter(Boolean));
   for(const s of (plan.steueropt||[])){
     if(s.trid && vorhandenTax.has(s.trid)) continue;
-    (k.taxOpt||(k.taxOpt=[])).push({id:uid(),datum:s.datum,betrag:fmtBetrag(s.betrag),trid:s.trid,_u:Date.now()});
+    (k.taxOpt||(k.taxOpt=[])).push({id:uid(),datum:s.datum,betrag:fmtBetrag(s.betrag),trid:s.trid,notiz:s.notiz||"",_u:Date.now()});
   }
   touch(k);
   return k.cashBetrag+" €";
