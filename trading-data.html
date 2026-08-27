@@ -471,8 +471,8 @@ function compute(pos){
   // Frühere, abgeschlossene Phasen liegen verdichtet als Jahreswerte vor (siehe archivBis).
   // Sie zählen in die Summen, aber NICHT in Break-even und Einstand — das ist ein anderer Play.
   const summe=o=>Object.values(o||{}).reduce((a,b)=>a+(+b||0),0);
-  const archivReal=summe(pos.archiv), archivDivs=summe(pos.archivDiv);
-  const gesamt=realized+(hasKurs?unreal:0)+(divCounted?divs:0)+archivReal+(divCounted?archivDivs:0);
+  const archivReal=summe(pos.archiv), archivDivs=summe(pos.archivDiv), archivSteuer=summe(pos.archivSteuer);
+  const gesamt=realized+(hasKurs?unreal:0)+(divCounted?divs:0)+archivReal+(divCounted?archivDivs:0)-(steuerCounted?archivSteuer:0);
   // Zeit & Jahresrendite
   const dates=tx.map(t=>t.datum).filter(Boolean).sort();
   const first=dates[0], last=dates[dates.length-1];
@@ -491,7 +491,7 @@ function compute(pos){
   const bePct=(!isNaN(beDelta)&&erstEinstieg)?beDelta/erstEinstieg*100:NaN;
   return {tx,realized,openQty,openCost,avg,curVal,unreal,divs,gesamt,hasKurs,
     oversell,buyCostAll,gesamtPct,unrealPct,jahr,first,last,closed,days,perTx,kurs,
-    erstEinstieg,breakEven,beDelta,bePct,steuer:steuerSum,steuerCounted,archivReal,archivDivs};
+    erstEinstieg,breakEven,beDelta,bePct,steuer:steuerSum+archivSteuer,steuerCounted,archivReal,archivDivs};
 }
 
 /* ---------- Jahresauswertung ----------
