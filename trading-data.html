@@ -1230,6 +1230,10 @@ async function refreshPrices(auto){
 }
 
 /* ---------- Symbol-Suche (Yahoo Finance über Proxy, kein Key) ---------- */
+// Xetra zuerst: dieselbe Aktie an mehreren Plätzen ist kein Kursunterschied (Arbitrage), sondern
+// ein Datenqualitäts-Unterschied — Yahoo pflegt Xetra fast immer aktueller als Nebenplätze
+// (Frankfurt/München/...) oder fremde Börsen. Nicht der Kaufort zählt, sondern die beste Quelle.
+function boersenRang(symbol){ return /\.DE$/.test(symbol||"")?0:1; }
 async function symSearch(){
   const q=val("f_symbol").trim();
   const box=document.getElementById("symResults");
@@ -1238,7 +1242,8 @@ async function symSearch(){
   box.innerHTML='<div class="hint">Suche…</div>';
   try{
     const b=await yahooJSON("/v1/finance/search?q="+encodeURIComponent(q)+"&quotesCount=12&newsCount=0");
-    const data=(b.quotes||[]).filter(x=>x.symbol && (x.quoteType==="EQUITY"||x.quoteType==="ETF"));
+    const data=(b.quotes||[]).filter(x=>x.symbol && (x.quoteType==="EQUITY"||x.quoteType==="ETF"))
+      .sort((a,c)=>boersenRang(a.symbol)-boersenRang(c.symbol));
     if(!data.length){box.innerHTML='<div class="hint">Nichts gefunden. Anderes Kürzel probieren.</div>';return;}
     box.innerHTML=data.map(x=>{
       const store=x.symbol;
@@ -1967,7 +1972,7 @@ async function tdSuggestTickers(){
   const suche=async(q)=>{
     const b=await yahooJSON("/v1/finance/search?q="+encodeURIComponent(q)+"&quotesCount=8&newsCount=0");
     const qs=((b&&b.quotes)||[]).filter(x=>x.symbol&&(rank[x.quoteType]!=null));
-    qs.sort((a,c)=>(rank[a.quoteType]??9)-(rank[c.quoteType]??9));
+    qs.sort((a,c)=>(rank[a.quoteType]??9)-(rank[c.quoteType]??9) || boersenRang(a.symbol)-boersenRang(c.symbol));
     return qs.length?qs[0].symbol:"";
   };
   const one=async(u)=>{
