@@ -400,6 +400,9 @@ function titelMitMarken(text, marken){
   if(i<=0 || rest.length>16) return t+' <span class="nobr">'+marken.replace(/^\s+/,"")+'</span>';
   return t.slice(0,i+1)+'<span class="nobr">'+rest+marken+'</span>';
 }
+// Kurs einer einzelnen Buchung (Kauf/Verkauf/Dividende) EUR je 1 Einheit Fremdwährung:
+// historisch (t.fx, vom Broker taggenau geliefert), sonst Rückfall auf den aktuellen Kurs.
+function fxVon(t, liveRate){ const v=num(t&&t.fx); return v>0?v:liveRate; }
 function compute(pos){
   // Cash-Konto: kein FIFO, kein Break-even — nur Saldo (+ Zinsen als „Dividende")
   if(pos.cash){
@@ -410,8 +413,10 @@ function compute(pos){
     // das ist keinem Titel zuzuordnen, sondern reines Verrechnungskonto-Geschehen. + = Erstattung.
     const taxOptSum=(pos.taxOpt||[]).reduce((s,t)=>s+(num(t.betrag)||0),0);
     const steuerCounted=!!state.settings.steuerGlobalOn;
-    return {tx:[],realized:0,openQty:0,openCost:0,avg:0,curVal:bal,unreal:0,divs,
-      gesamt:(divCounted?divs:0)+(steuerCounted?taxOptSum:0),hasKurs:true,oversell:false,buyCostAll:0,
+    // Cash-Konten sind immer EUR-nativ -> Eur-Felder = native Felder (keine Umrechnung nötig)
+    const gesamt=(divCounted?divs:0)+(steuerCounted?taxOptSum:0);
+    return {tx:[],realized:0,realizedEur:0,openQty:0,openCost:0,openCostEur:0,avg:0,curVal:bal,curValEur:bal,unreal:0,unrealEur:0,divs,divsEur:divs,
+      gesamt,gesamtEur:gesamt,hasKurs:true,oversell:false,buyCostAll:0,
       gesamtPct:NaN,unrealPct:NaN,jahr:NaN,first:"",last:"",closed:false,days:0,perTx:{},kurs:bal,
       erstEinstieg:NaN,breakEven:NaN,beDelta:NaN,bePct:NaN,steuer:-taxOptSum,steuerCounted,taxOpt:taxOptSum,isCash:true,
       archivReal:0,archivDivs:0};
@@ -423,8 +428,11 @@ function compute(pos){
   // offene Richtung läuft, schließt zuerst (realisiert), der Rest eröffnet neu.
   // So zählt Leerverkauf→Eindeckung sauber als geschlossener Trade mit korrektem Gewinn;
   // bei Roundtrips ist das Ergebnis sogar unabhängig von der Buchungs-Reihenfolge.
+  const cur=(pos.currency||"EUR").toUpperCase();
+  const _fxAll=(state.settings&&state.settings.fxRates)||{};
+  const liveRate=cur==="EUR"?1:(_fxAll[cur]>0?_fxAll[cur]:1);   // aktueller Kurs, nur Rückfall
   const lots=[];
-  let realized=0, oversell=false, buyCostAll=0, steuerSum=0;
+  let realized=0, realizedEur=0, oversell=false, buyCostAll=0, steuerSum=0;
   const perTx={};           // Ergebnis je schließendem Trade (fürs Anzeigen der Paarung)
   for(const t of tx){
     const st=num(t.stueck), ku=num(t.kurs), ge=num(t.gebuehr)||0;
@@ -433,7 +441,8 @@ function compute(pos){
     const fps=ge/st;                                 // Gebühr pro Stück
     const side=t.typ==="kauf"?"long":"short";        // Richtung dieses Trades
     if(t.typ==="kauf") buyCostAll+=st*ku+ge;
-    let qty=st, r=0, matched=[];
+    const txFx=fxVon(t,liveRate);     // Tageskurs DIESER Buchung (historisch, sonst Rückfall aktuell)
+    let qty=st, r=0, rEur=0, matched=[];
     // Läuft der Trade gegen offene Gegen-Lots? → zuerst schließen (realisieren)
     while(qty>1e-9 && lots.length && lots[0].side!==side){
       const lot=lots[0];
@@ -442,22 +451,28 @@ function compute(pos){
       const rr = lot.side==="long"
         ? (q*ku - q*fps) - (q*lot.price + q*lot.fps)
         : (q*lot.price - q*lot.fps) - (q*ku + q*fps);
-      r+=rr;
+      // In Euro: beide Seiten JEWEILS mit ihrem eigenen Tageskurs — nicht die
+      // Fremdwährungs-Differenz mit einem einzigen (heutigen) Kurs umgerechnet.
+      const rrEur = lot.side==="long"
+        ? (q*ku*txFx - q*fps*txFx) - (q*lot.price*lot.fx + q*lot.fps*lot.fx)
+        : (q*lot.price*lot.fx - q*lot.fps*lot.fx) - (q*ku*txFx + q*fps*txFx);
+      r+=rr; rEur+=rrEur;
       matched.push({q,price:lot.price});
       lot.q-=q; qty-=q;
       if(lot.q<=1e-9)lots.shift();
     }
-    if(matched.length){ realized+=r; perTx[t.id]={realized:r, matched, steuer:num(t.steuer)||0}; }
-    // Rest eröffnet neue Lots in Trade-Richtung
-    if(qty>1e-9) lots.push({q:qty, price:ku, fps, side});
+    if(matched.length){ realized+=r; realizedEur+=rEur; perTx[t.id]={realized:r,realizedEur:rEur,matched,steuer:num(t.steuer)||0}; }
+    // Rest eröffnet neue Lots in Trade-Richtung — Tageskurs wird mitgeführt (fürs spätere Schließen)
+    if(qty>1e-9) lots.push({q:qty, price:ku, fps, side, fx:txFx});
   }
   // Steuer: standardmäßig NICHT eingerechnet (Kursbetrachtung vor Steuer).
   // Per Chip an der Position zuschaltbar — dann mindert sie Realisiert, Gesamt und hebt den Break-even.
   const steuerCounted=!!pos.steuerOn || !!(state.settings&&state.settings.steuerGlobalOn);   // pro Position ODER global
-  if(steuerCounted) realized-=steuerSum;
+  if(steuerCounted){ realized-=steuerSum; realizedEur-=steuerSum; }   // Steuer nur bei TR (immer EUR)
   const longLots=lots.filter(l=>l.side==="long");
   const openQty=longLots.reduce((s,l)=>s+l.q,0) - lots.filter(l=>l.side==="short").reduce((s,l)=>s+l.q,0);
   const openCost=longLots.reduce((s,l)=>s+l.q*(l.price+l.fps),0);   // nur Long-Bestand
+  const openCostEur=longLots.reduce((s,l)=>s+l.q*(l.price+l.fps)*l.fx,0);   // je Lot zu SEINEM Einstandskurs
   const avg=openQty>0?openCost/openQty:0;
   if(openQty<-1e-9) oversell=true;   // endet netto leerverkauft → wahrscheinlich fehlende Kauf-Daten
   // Ausgeknockt/ausgelaufen (Yahoo führt es nicht mehr): wie im Depot beim Broker mit 0 € rechnen,
@@ -465,14 +480,19 @@ function compute(pos){
   const kurs=pos.kursDead?0:num(pos.kursAktuell);
   const hasKurs=!isNaN(kurs)&&openQty>0;
   const curVal=hasKurs?openQty*kurs:0;
+  const curValEur=hasKurs?openQty*kurs*liveRate:0;   // heutiger Wert -> heutiger Kurs (richtig so)
   const unreal=hasKurs?curVal-openCost:0;
+  const unrealEur=hasKurs?curValEur-openCostEur:0;
   const divs=(pos.div||[]).reduce((s,d)=>s+ (num(d.netto)||0),0);
+  const divsEur=(pos.div||[]).reduce((s,d)=>s+ (num(d.netto)||0)*fxVon(d,liveRate),0);
   const divCounted=!pos.divOff && !state.settings.divGlobalOff;   // global aus ODER pro Position abwählbar
   // Frühere, abgeschlossene Phasen liegen verdichtet als Jahreswerte vor (siehe archivBis).
   // Sie zählen in die Summen, aber NICHT in Break-even und Einstand — das ist ein anderer Play.
+  // (Immer TR/EUR -> keine Fremdwährungs-Umrechnung nötig, in EUR und nativ identisch.)
   const summe=o=>Object.values(o||{}).reduce((a,b)=>a+(+b||0),0);
   const archivReal=summe(pos.archiv), archivDivs=summe(pos.archivDiv), archivSteuer=summe(pos.archivSteuer);
   const gesamt=realized+(hasKurs?unreal:0)+(divCounted?divs:0)+archivReal+(divCounted?archivDivs:0)-(steuerCounted?archivSteuer:0);
+  const gesamtEur=realizedEur+(hasKurs?unrealEur:0)+(divCounted?divsEur:0)+archivReal+(divCounted?archivDivs:0)-(steuerCounted?archivSteuer:0);
   // Zeit & Jahresrendite
   const dates=tx.map(t=>t.datum).filter(Boolean).sort();
   const first=dates[0], last=dates[dates.length-1];
@@ -489,7 +509,7 @@ function compute(pos){
   const breakEven=openQty>0?(openCost-realized-(divCounted?divs:0))/openQty:NaN;
   const beDelta=(!isNaN(erstEinstieg)&&!isNaN(breakEven))?breakEven-erstEinstieg:NaN;
   const bePct=(!isNaN(beDelta)&&erstEinstieg)?beDelta/erstEinstieg*100:NaN;
-  return {tx,realized,openQty,openCost,avg,curVal,unreal,divs,gesamt,hasKurs,
+  return {tx,realized,realizedEur,openQty,openCost,openCostEur,avg,curVal,curValEur,unreal,unrealEur,divs,divsEur,gesamt,gesamtEur,hasKurs,
     oversell,buyCostAll,gesamtPct,unrealPct,jahr,first,last,closed,days,perTx,kurs,
     erstEinstieg,breakEven,beDelta,bePct,steuer:steuerSum+archivSteuer,steuerCounted,archivReal,archivDivs};
 }
@@ -549,15 +569,20 @@ function yearStats(y){
     for(const t of m.tx){
       if(String(t.datum||"").slice(0,4)!==y) continue;
       const r=m.perTx[t.id];
-      if(r&&r.matched&&r.matched.length){ real+=r.realized*rate; trades++; }
-      steuer+=(num(t.steuer)||0)*rate;
+      // Mit dem Tageskurs DIESES Trades umgerechnet, nicht mit dem heutigen — sonst würde ein
+      // vor Jahren geschlossener Trade rückwirkend am heutigen Kurs "neu bewertet".
+      if(r&&r.matched&&r.matched.length){ real+=r.realizedEur; trades++; }
+      steuer+=(num(t.steuer)||0);                          // Steuer nur bei TR (immer EUR)
     }
-    for(const d of (p.div||[])) if(String(d.datum||"").slice(0,4)===y) divs+=(num(d.netto)||0)*rate;
-    real+=(+((p.archiv||{})[y])||0)*rate;                  // verdichtete frühere Phasen
-    divs+=(+((p.archivDiv||{})[y])||0)*rate;
+    for(const d of (p.div||[])) if(String(d.datum||"").slice(0,4)===y) divs+=(num(d.netto)||0)*fxVon(d,rate);
+    real+=(+((p.archiv||{})[y])||0);                       // verdichtete frühere Phasen (immer TR/EUR)
+    divs+=(+((p.archivDiv||{})[y])||0);                    // verdichtete Dividenden (immer TR/EUR)
     if(p.cash) continue;                                   // Cash hat keine Kursänderung
     // Wertänderung = unrealisiert am Jahresende − unrealisiert am Vorjahresende.
     // Zusammen mit „realisiert" ergibt das die vollständige Jahresperformance.
+    // (Näherung mit dem HEUTIGEN Kurs, nicht dem Jahresend-Kurs — Fremdwährung wird hier noch
+    // nicht taggenau geführt, da dafür ein FX-Kurs je Jahreswechsel fehlt. Wirkt sich nur auf
+    // die Jahres-Tabelle bei Fremdwährungspositionen aus, nicht auf die Portfolio-Gesamtsumme.)
     const hatteBestand = stateAsOf(p,y+"-12-31").openQty>1e-9 || stateAsOf(p,vor+"-12-31").openQty>1e-9;
     if(!hatteBestand) continue;
     const uEnd=unrealAtYearEnd(p,y), uVor=unrealAtYearEnd(p,vor);
@@ -618,15 +643,15 @@ function render(){
   }
   // Portfolio-Summe
   let tReal=0,tUnreal=0,tDiv=0,tDivOff=0,tCur=0,tGes=0,tSteuer=0,tCash=0,tZins=0,tZinsOff=0;
-  const _fx=state.settings.fxRates||{};   // EUR je 1 Einheit Fremdwährung (aus letztem Kurs-Abruf)
   const metrics=state.positions.map(p=>{const m=compute(p);
-    const cur=(p.currency||"EUR").toUpperCase(); const rate=cur==="EUR"?1:(_fx[cur]>0?_fx[cur]:1); m._eur=rate;
-    tReal+=(m.realized+m.archivReal)*rate;                                    // inkl. frueherer Phasen
-    if(p.cash){ tZins+=m.divs*rate; if(p.divOff)tZinsOff+=m.divs*rate; }      // Zinsen zaehlen zum Cash
-    else { tDiv+=(m.divs+m.archivDivs)*rate; if(p.divOff)tDivOff+=m.divs*rate; }
-    tSteuer+=m.steuer*rate;
-    if(m.isCash){ tCash+=m.curVal*rate; } else if(m.hasKurs){ tUnreal+=m.unreal*rate; tCur+=m.curVal*rate; }
-    tGes+=m.gesamt*rate; return m;});
+    // *Eur-Felder sind schon korrekt umgerechnet: jede Buchung mit IHREM eigenen Tageskurs,
+    // nur der heutige Depotwert mit dem aktuellen Kurs — kein pauschaler Kurs mehr fürs Ganze.
+    tReal+=(m.realizedEur+m.archivReal);                                     // inkl. frueherer Phasen
+    if(p.cash){ tZins+=m.divsEur; if(p.divOff)tZinsOff+=m.divsEur; }         // Zinsen zaehlen zum Cash
+    else { tDiv+=(m.divsEur+m.archivDivs); if(p.divOff)tDivOff+=m.divsEur; }
+    tSteuer+=m.steuer;
+    if(m.isCash){ tCash+=m.curValEur; } else if(m.hasKurs){ tUnreal+=m.unrealEur; tCur+=m.curValEur; }
+    tGes+=m.gesamtEur; return m;});
   // NICHT die Kaufsumme aller Buchungen als Basis (wie bei der einzelnen Position) — bei wiederbespielten
   // Positionen (Rebuys, Sparplan, reinvestierte Erlöse) zählt dasselbe Kapital dort mehrfach mit und
   // verwässert die Quote über Jahre hinweg. Stattdessen: eingesetztes Kapital = Depotwert − Gesamt.
@@ -913,7 +938,7 @@ function renderPos(p,m,idx){
   const gesWrap = `<span class="ph-ges">Gesamt ${gesHtml(m)}</span>`;
   // Anteil am Depotwert (inkl. Cash) — nur wo es einen Wert gibt
   const anteil = (_depotWert>0 && (m.isCash||m.hasKurs) && m.curVal>0)
-    ? ` <span class="badge">${pct.format(m.curVal*(m._eur||1)/_depotWert*100)} %</span>` : "";
+    ? ` <span class="badge">${pct.format(m.curValEur/_depotWert*100)} %</span>` : "";
   const subLeft = m.isCash ? `<span>Cash <b>${feur(m.curVal)}</b></span>${m.divs?` ${gesWrap}`:""}`
     : m.openQty>0 ? `<span>Position <b>${feur(m.curVal)}</b></span> ${gesWrap}` : `<span>Geschlossen</span> ${gesWrap}`;
   const isDead = !!p.kursDead && m.openQty>0;   // Yahoo führt das Papier nicht mehr → zählt mit 0 €
