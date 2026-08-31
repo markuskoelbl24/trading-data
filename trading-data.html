@@ -41,9 +41,10 @@
   .btn.sm{padding:6px 10px;font-size:13px}
   .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
   .spacer{flex:1}
-  input,select{font:inherit;background:var(--card2);border:1px solid var(--line);color:var(--txt);
+  input,select,textarea{font:inherit;background:var(--card2);border:1px solid var(--line);color:var(--txt);
     border-radius:10px;padding:10px 11px;width:100%;min-width:0}
   input[type=date]{-webkit-appearance:none;appearance:none;text-align:left}
+  textarea{resize:vertical;line-height:1.4}
   label{font-size:12px;color:var(--muted);display:block;margin:0 0 4px}
   .pos{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
     padding:13px 13px 11px;margin:12px 0;position:relative}
@@ -112,6 +113,11 @@
   .pos-empty{color:var(--muted);font-size:13px;padding:6px 2px}
   .pos.warn{border-color:var(--amber)}
   .warnmsg{color:var(--amber);font-size:12.5px;margin:8px 2px 0}
+  .these-preview{font-size:12.5px;color:var(--muted);margin:3px 2px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .these-body{font-size:13px;line-height:1.5;white-space:pre-wrap;padding:2px 2px 8px}
+  .these-body h4{font-size:12px;color:var(--muted);margin:10px 0 2px;text-transform:uppercase;letter-spacing:.02em}
+  .these-body h4:first-child{margin-top:0}
+  .these-datum{font-size:11.5px;color:var(--muted);margin:0 2px 6px}
   .pos.stop{border-color:var(--red)}
   .stopmsg{color:var(--red);font-size:12.5px;margin:8px 2px 0;font-weight:600}
   .badge.badge-red{color:#ffb4b0;border-color:var(--red);background:rgba(240,85,77,.14)}
@@ -614,7 +620,7 @@ function toggleSearch(){
 }
 function matchesQuery(p){
   if(!_q) return true;
-  return [p.titel,p.symbol,p.broker,p.isin,p.branche,p.notiz].some(v=>normQ(v).includes(_q));
+  return [p.titel,p.symbol,p.broker,p.isin,p.branche,p.notiz,p.these].some(v=>normQ(v).includes(_q));
 }
 /* Leiste einblenden, sobald der Portfolio-Block weggescrollt ist. Endzustand hängt an
    der Klasse, nicht an einer Animation — bei eingefrorenen Animationen bleibt sie korrekt. */
@@ -969,6 +975,7 @@ function renderPos(p,m,idx){
       <div class="ph-left">
         <div class="titel">${titelMitMarken(p.titel||"(ohne Titel)",(p.broker?` <span class="badge">${esc(p.broker)}</span>`:"")+anteil+deadBadge)}</div>
         <div class="ph-sub">${subLeft}${stopBadge}</div>
+        ${p.these?`<div class="these-preview">💭 ${esc(p.these)}</div>`:""}
       </div>
       ${right}
       <button class="txedit ph-edit" onclick="event.stopPropagation();openPos('${p.id}')">✎</button>
@@ -1002,8 +1009,12 @@ function renderPos(p,m,idx){
       <div class="pos-actions">
         <button class="btn sm" onclick="openTx('${p.id}')">+ Kauf/Verkauf</button>
         <button class="btn sec sm" onclick="openDiv('${p.id}')">+ Dividende</button>
+        <button class="btn sec sm" onclick="openThese('${p.id}')">💭 These</button>
         ${isDead?`<button class="btn sec sm" onclick="koAusbuchen('${p.id}')">Wertlos ausbuchen</button>`:""}
       </div>
+      ${(p.these||(p.analyse&&p.analyse.text))?`<details ${openDetails.has(p.id+"-these")?"open":""} data-pid="${p.id}-these"><summary>💭 These &amp; Analyse${p.analyse&&p.analyse.datum?` <span class="nb">· zuletzt ${fdate(p.analyse.datum)}</span>`:""}</summary>
+        <div class="these-body">${p.these?`<h4>These</h4>${esc(p.these)}`:""}${p.analyse&&p.analyse.text?`<h4>Analyse</h4>${esc(p.analyse.text)}`:""}</div>
+        <button class="btn sec sm" onclick="openThese('${p.id}')" style="margin:0 2px 4px">✎ Bearbeiten</button></details>`:""}
       <details data-pid="${p.id}" ${openDetails.has(p.id)?"open":""}><summary>Buchungen (${allEntries.length})</summary>${txHtml}</details>`}
     </div>
   `;
@@ -1661,6 +1672,35 @@ function saveDiv(pid,did){
   save();closeSheet();render();syncPushLater();
 }
 function delDiv(pid,did){const p=find(pid);state.tombstones[did]=Date.now();p.div=p.div.filter(x=>x.id!==did);save();closeSheet();render();syncPushLater();}
+
+/* ---------- These & Analyse ----------
+   These = warum halte ich das (kurz, formlos). Analyse = datierter Recherche-Stand
+   (News/Chart/Fundamentals/Volumen/Bollinger etc. als Abschnitte im selben Textfeld
+   -- bewusst EIN Feld statt fuenf, damit die Form nicht vorschreibt, was gerade da ist). */
+function openThese(pid){
+  const p=find(pid); if(!p)return;
+  openSheet(`
+    <h2>💭 These &amp; Analyse · ${esc(p.titel)}</h2>
+    <div class="field"><label>These — warum halte ich das?</label>
+      <textarea id="f_these" rows="3" placeholder="z.B. langfristig, Fels in der Brandung, großer Posten...">${p.these?esc(p.these):""}</textarea></div>
+    <div class="field"><label>Analyse (News, Chart, Fundamentals, Volumen, Bollinger, ...)</label>
+      <textarea id="f_analyse" rows="8" placeholder="Freitext -- eigene Abschnitte, wie es gerade passt">${p.analyse&&p.analyse.text?esc(p.analyse.text):""}</textarea></div>
+    ${p.analyse&&p.analyse.datum?`<div class="hint">Zuletzt aktualisiert: ${fdate(p.analyse.datum)}</div>`:""}
+    <div class="sheet-actions">
+      <button class="btn sec" onclick="closeSheet()">Abbr.</button>
+      <button class="btn" onclick="saveThese('${pid}')">Speichern</button>
+    </div>`);
+}
+function saveThese(pid){
+  const p=find(pid); if(!p)return;
+  const these=val("f_these").trim(), analyseText=val("f_analyse").trim();
+  p.these=these||undefined; if(!these)delete p.these;
+  if(analyseText){
+    const alt=(p.analyse&&p.analyse.text)||"";
+    p.analyse={text:analyseText, datum:(alt===analyseText&&p.analyse&&p.analyse.datum)?p.analyse.datum:today()};
+  } else delete p.analyse;
+  touch(p); save(); closeSheet(); render(); syncPushLater();
+}
 
 /* ---------- Backup (Export/Import) ---------- */
 function openBackup(){
