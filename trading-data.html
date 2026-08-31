@@ -733,7 +733,11 @@ function render(){
     const mm=metrics[idx];
     // Ein Wertpapier ohne Bestand ist geschlossen — auch wenn davon nur noch Dividenden
     // uebrig sind (z. B. eine Wahldividende ohne eigene Buchungen). Cash bleibt immer oben.
-    const hatVergangenheit = mm.tx.length>0 || (p.div||[]).length>0 || mm.archivReal || mm.archivDivs;
+    // Nicht den SUMMENWERT prüfen (0 € ist ein gültiges Archiv-Ergebnis, z.B. ein Jahr glatt
+    // ausgestiegen) — sondern ob überhaupt archiviert wurde. Sonst landet so eine Position
+    // fälschlich bei "offen" statt in "Geschlossene Positionen".
+    const hatVergangenheit = mm.tx.length>0 || (p.div||[]).length>0 || !!p.archivBis
+      || Object.keys(p.archiv||{}).length>0 || Object.keys(p.archivDiv||{}).length>0;
     (!p.cash && mm.openQty<=1e-9 && hatVergangenheit ? closedIdx : openIdx).push(idx);
   });
   list.innerHTML="";
