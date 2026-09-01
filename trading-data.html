@@ -358,6 +358,10 @@ function load(){
 function save(){localStorage.setItem(LS,JSON.stringify(state));}
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
 function touch(o){ if(o)o._u=Date.now(); return o; }   // Änderungszeit markieren (für Merge)
+// Leere Felder gar nicht erst speichern (und beim Leeren wieder entfernen). Bei tausenden
+// Buchungen macht das ein paar hundert KB aus — und die zählen, weil die ganze Datei bei
+// JEDEM Sync komplett hin und her geht. num() liest fehlend wie 0, die Masken wie "".
+function setOrDel(o,k,v){ if(v==null||v==="") delete o[k]; else o[k]=v; return o; }
 
 /* ---------- Parsen / Formatieren ---------- */
 function num(v){                                   // versteht "1.234,56" und "1234.56"
@@ -1387,16 +1391,26 @@ async function ghGet(){
   if(r.status===404) return {data:{positions:[],tombstones:{}}, sha:null};
   if(!r.ok) throw new Error("GET "+r.status+" "+(await r.text()).slice(0,140));
   const j=await r.json();
-  // GitHub liefert Dateien über 1 MB OHNE Inhalt aus. Früher lief der Abgleich dann mit einem
-  // LEEREN Gegenstand weiter und hat den eigenen Stand darübergeschrieben — dabei gingen die
-  // Löschmarken der anderen Geräte verloren. Lieber abbrechen als etwas überschreiben.
-  const roh=(j.content||"").replace(/\n/g,"");
+  // Ab 1 MB packt GitHub den Inhalt NICHT mehr in die JSON-Antwort (content leer,
+  // encoding "none") — die sha steht aber weiterhin drin. Dann den Inhalt roh
+  // nachladen: derselbe Endpunkt, nur mit Accept "…​.raw", das geht bis 100 MB.
+  // Nur bei kleinen Dateien bleibt es also bei EINER Anfrage.
+  // Wichtig bleibt: ohne Inhalt lieber abbrechen als mit einem LEEREN Gegenstand
+  // weiterrechnen — sonst überschreibt das eigene Gerät die Löschmarken der anderen.
   const kb=Math.round((j.size||0)/1024);
-  if(!roh) throw new Error("Der Stand im Repo ist "+kb+" KB groß — über der Grenze von 1024 KB, die GitHub ausliefert. Abgleich abgebrochen, damit nichts überschrieben wird.");
+  let text=null;
+  const roh=(j.content||"").replace(/\n/g,"");
+  if(roh) text=b64decode(roh);
+  else if(j.size>0){
+    const rr=await fetch(url,{cache:"no-store",headers:{Authorization:"Bearer "+c.token,Accept:"application/vnd.github.raw"}});
+    if(!rr.ok) throw new Error("Der Stand im Repo ist "+kb+" KB groß und liess sich nicht laden (HTTP "+rr.status+"). Abgleich abgebrochen, damit nichts überschrieben wird.");
+    text=await rr.text();
+  }
+  if(!text) throw new Error("Der Stand im Repo kam ohne Inhalt an ("+kb+" KB). Abgleich abgebrochen, damit nichts überschrieben wird.");
   let data;
-  try{ data=JSON.parse(b64decode(roh)); }
+  try{ data=JSON.parse(text); }
   catch(e){ throw new Error("Der Stand im Repo ist unlesbar — Abgleich abgebrochen, damit nichts überschrieben wird."); }
-  if(kb>900) setSyncStatus("Datei "+kb+" KB — nah an der Grenze");
+  if(kb>90000) setSyncStatus("Datei "+Math.round(kb/1024)+" MB — nah an der Grenze von 100 MB");
   return {data, sha:j.sha};
 }
 async function ghPut(payload, sha){
@@ -1627,7 +1641,7 @@ function saveTx(pid,tid){
   if(!t){t={id:uid()};p.tx=p.tx||[];p.tx.push(t);}
   t.typ=txTyp;t.datum=val("f_datum")||today();
   t.stueck=val("f_stueck").trim();t.kurs=val("f_kurs").trim();
-  t.gebuehr=val("f_geb").trim();t.steuer=val("f_steuer").trim();t.notiz=val("f_txnotiz").trim();
+  setOrDel(t,"gebuehr",val("f_geb").trim()); setOrDel(t,"steuer",val("f_steuer").trim()); setOrDel(t,"notiz",val("f_txnotiz").trim());
   touch(t);
   save();syncPushLater();
   if(tid){closeSheet();render();return;}          // Bearbeiten: schließen
@@ -1671,7 +1685,7 @@ function saveDiv(pid,did){
   if(isNaN(n)){alert("Bitte Netto-Betrag eingeben.");return;}
   let d=did?(p.div).find(x=>x.id===did):null;
   if(!d){d={id:uid()};p.div=p.div||[];p.div.push(d);}
-  d.datum=val("f_ddatum")||today();d.netto=val("f_dnetto").trim();d.notiz=val("f_dnotiz").trim();
+  d.datum=val("f_ddatum")||today();d.netto=val("f_dnetto").trim();setOrDel(d,"notiz",val("f_dnotiz").trim());
   touch(d);
   save();closeSheet();render();syncPushLater();
 }
@@ -2005,11 +2019,17 @@ function tdSimulate(assign, mutate){
       const m=(p.div||[]).find(d=>!used[p.id].has(d.id)&&!d.trid&&(d.datum||"").slice(0,10)===c.datum&&(Math.abs((num(d.netto)||0)-netto)<0.02||Math.abs((num(d.netto)||0)-c.amount)<0.02));
       if(m){ if(Math.abs((num(m.netto)||0)-c.amount)<0.02 && c.tax) m.netto=tdFmt(netto);   // alte Brutto-Buchung mitkorrigieren
              m.trid=c.trid; if(mutate)touch(m); used[p.id].add(m.id); backfill++; }
-      else { const d={id:uid(),datum:c.datum,netto:tdFmt(netto),notiz:"TR-Import",trid:c.trid,_u:now}; (p.div||(p.div=[])).push(d); used[p.id].add(d.id); added++; }   // alle Dividenden (per trid dublettensicher)
+      // Kein notiz:"TR-Import" mehr — die Herkunft steht schon in der trid, und bei tausenden
+      // Buchungen ist der immer gleiche Text nur Ballast in der Sync-Datei (und in der Anzeige).
+      else { const d={id:uid(),datum:c.datum,netto:tdFmt(netto),trid:c.trid,_u:now}; (p.div||(p.div=[])).push(d); used[p.id].add(d.id); added++; }   // alle Dividenden (per trid dublettensicher)
     } else {
       const m=(p.tx||[]).find(t=>!used[p.id].has(t.id)&&!t.trid&&t.typ===c.kind&&(t.datum||"").slice(0,10)===c.datum&&Math.abs((num(t.stueck)||0)-c.stueck)<0.001&&Math.abs((num(t.kurs)||0)-c.kurs)<Math.max(0.02,c.kurs*0.01));
       if(m){ if(c.tax)m.steuer=tdFmt(c.tax); if(c.fee&&!(num(m.gebuehr)>0))m.gebuehr=tdFmt(c.fee); m.trid=c.trid; if(mutate)touch(m); used[p.id].add(m.id); backfill++; }
-      else if(isNew[p.id]||c.datum>(posMaxDate[p.id]||"")){ const t={id:uid(),typ:c.kind,datum:c.datum,stueck:tdFmt(c.stueck),kurs:tdFmt(c.kurs),gebuehr:c.fee?tdFmt(c.fee):"",steuer:c.tax?tdFmt(c.tax):"",notiz:(c.frei?"Kapitalmaßnahme – Einstand prüfen":"TR-Import"),trid:c.trid,_u:now}; (p.tx||(p.tx=[])).push(t); used[p.id].add(t.id); added++; }
+      // Nur was wirklich drinsteht: keine leeren gebuehr/steuer-Felder, keine Standard-Notiz.
+      // Die aussagekräftige Kapitalmaßnahmen-Notiz bleibt — die will man beim Prüfen sehen.
+      else if(isNew[p.id]||c.datum>(posMaxDate[p.id]||"")){ const t={id:uid(),typ:c.kind,datum:c.datum,stueck:tdFmt(c.stueck),kurs:tdFmt(c.kurs),trid:c.trid,_u:now};
+        if(c.fee)t.gebuehr=tdFmt(c.fee); if(c.tax)t.steuer=tdFmt(c.tax); if(c.frei)t.notiz="Kapitalmaßnahme – Einstand prüfen";
+        (p.tx||(p.tx=[])).push(t); used[p.id].add(t.id); added++; }
       else skippedBaseline++;
     }
     if(c.trid)seen.add(c.trid);
