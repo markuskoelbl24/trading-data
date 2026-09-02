@@ -144,6 +144,8 @@
   .splitlab .dot.inv{background:var(--accent)} .splitlab .dot.cash{background:var(--muted);opacity:.45}
   .fusszeile{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:11px}
   .fussmeta{font-size:11.5px;color:var(--muted);white-space:nowrap;display:inline-flex;align-items:center;gap:8px}
+  .trhint{font-size:11px;color:var(--muted);opacity:.75;margin:5px 2px 0;line-height:1.35}
+  .trhint b{font-weight:600;color:var(--muted)}
   .totchips{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin-top:0}   /* nicht strecken */
   /* NICHT baseline: sobald der kleinere „von …"-Zusatz dazukommt, waechst die Zeile und das
      Haekchen rutscht nach unten — genau der sichtbare Versatz. Mittig haelt alles auf einer Linie. */
@@ -652,7 +654,7 @@ function render(){
     return;
   }
   // Portfolio-Summe
-  let tReal=0,tUnreal=0,tDiv=0,tDivOff=0,tCur=0,tGes=0,tSteuer=0,tCash=0,tZins=0,tZinsOff=0;
+  let tReal=0,tUnreal=0,tDiv=0,tDivOff=0,tCur=0,tGes=0,tSteuer=0,tCash=0,tZins=0,tZinsOff=0,tBonus=0;
   const metrics=state.positions.map(p=>{const m=compute(p);
     // *Eur-Felder sind schon korrekt umgerechnet: jede Buchung mit IHREM eigenen Tageskurs,
     // nur der heutige Depotwert mit dem aktuellen Kurs — kein pauschaler Kurs mehr fürs Ganze.
@@ -660,6 +662,10 @@ function render(){
     if(p.cash){ tZins+=m.divsEur; if(p.divOff)tZinsOff+=m.divsEur; }         // Zinsen zaehlen zum Cash
     else { tDiv+=(m.divsEur+m.archivDivs); if(p.divOff)tDivOff+=m.divsEur; }
     tSteuer+=m.steuer;
+    // Ertraege ohne Gegenleistung (Referral-Aktien, Zusatzzahlung bei Uebernahme):
+    // stehen bei uns als Dividende, zaehlen bei TR aber gar nicht zur Performance
+    // ("Ereignisse, die keinen Einfluss auf die Performance haben ... Gratisaktien").
+    for(const dv of (p.div||[])) if(/bonus|zusatz/i.test(dv.notiz||"")) tBonus+=(num(dv.netto)||0);
     if(m.isCash){ tCash+=m.curValEur; } else if(m.hasKurs){ tUnreal+=m.unrealEur; tCur+=m.curValEur; }
     tGes+=m.gesamtEur; return m;});
   // NICHT die Kaufsumme aller Buchungen als Basis (wie bei der einzelnen Position) — bei wiederbespielten
@@ -725,6 +731,7 @@ function render(){
         return `<button class="divchip ${state.settings.steuerGlobalOn?"":"off"}" onclick="toggleSteuerGlobal()" title="Bereits einbehaltene Steuer (v. a. Trade Republic) abziehen, TR-Steueroptimierung netto eingerechnet — IBKR fehlt darin"><span class="cbox">${state.settings.steuerGlobalOn?"✓":""}</span><span class="chiptxt">Steuer <span class="amt ${erstattung?"green":"red"}">${erstattung?"+":"−"}${emoney(Math.abs(tSteuer))}</span></span></button>`;})():""}
     </div>`:""}
       <div class="spacer"></div>
+      ${tBonus?`<div class="trhint" title="Trade Republic zaehlt zur Performance nur Handel, Dividenden, Gebuehren und Steuern. Zuteilungen ohne Gegenleistung (Referral-Aktien, Zusatzzahlung bei einer Uebernahme) bleiben dort aussen vor, Zinsen aufs Guthaben ebenfalls — deshalb steht das Tool hoeher als die TR-Anzeige.">TR ohne: Bonus <b>${emoney(tBonus).replace("+","")}</b> · Zinsen per Haken</div>`:""}
       <span class="fussmeta">${hasSym&&upd?`Kurse ${new Date(upd).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}`:""}
         <span class="badge" title="Aktuell gehaltene Wertpapiere (ohne geschlossene und ohne Cash)">${
         metrics.filter((m,i)=>!state.positions[i].cash && m.openQty>1e-9).length} gehalten</span></span>
