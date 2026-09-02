@@ -1972,7 +1972,8 @@ function tdBuildPlan(text){
     const isKnown = knownIsin.has(broker+"|"+isin) || knownName.has(broker+"|"+tdNorm(name)) || !!isinMap[isin];
     if(!isKnown){ if(!unknown[isin])unknown[isin]={isin,name,count:0,last:"",held:(net[isin]||0)>0.0001,broker}; unknown[isin].count++; if(dt>unknown[isin].last)unknown[isin].last=dt; }
     cand.push({ isin, name, kind, trid, datum:dt, broker, stueck, kurs, frei,
-      fee:Math.abs(tdCsvNum(r.fee)||0), tax:Math.abs(tdCsvNum(r.tax)||0), amount:Math.abs(tdCsvNum(r.amount)||0) }); }
+      fee:Math.abs(tdCsvNum(r.fee)||0), tax:Math.abs(tdCsvNum(r.tax)||0), amount:Math.abs(tdCsvNum(r.amount)||0),
+      netto:(tdCsvNum(r.amount)||0)+(tdCsvNum(r.tax)||0) }); }
   // Kontostand: Betrag + Steuer + Gebühr über ALLE Zeilen. Achtung, das Vorzeichen steht
   // in der CSV — Steuer-Erstattungen (Verlustverrechnung) sind positiv und werden gutgeschrieben.
   let saldo=0, zinsen=[], steueropt=[];
@@ -2022,7 +2023,7 @@ function tdSimulate(assign, mutate){
       // NETTO heisst netto: die Quellensteuer steht in der tax-Spalte und muss abgezogen werden.
       // Vorher landete hier der Bruttobetrag im Feld "netto" -> Dividenden dauerhaft zu hoch
       // (bei Zinsen war es von Anfang an richtig). Gefunden 27.08.2026 beim TR-Abgleich.
-      const netto=c.amount-(c.tax||0);
+      const netto=(c.netto!=null?c.netto:c.amount-(c.tax||0));   // vorzeichenrichtig, s. tdBuildPlan
       const m=(p.div||[]).find(d=>!used[p.id].has(d.id)&&!d.trid&&(d.datum||"").slice(0,10)===c.datum&&(Math.abs((num(d.netto)||0)-netto)<0.02||Math.abs((num(d.netto)||0)-c.amount)<0.02));
       if(m){ if(Math.abs((num(m.netto)||0)-c.amount)<0.02 && c.tax) m.netto=tdFmt(netto);   // alte Brutto-Buchung mitkorrigieren
              m.trid=c.trid; if(mutate)touch(m); used[p.id].add(m.id); backfill++; }
