@@ -425,13 +425,30 @@ function compute(pos){
     // das ist keinem Titel zuzuordnen, sondern reines Verrechnungskonto-Geschehen. + = Erstattung.
     const taxOptSum=(pos.taxOpt||[]).reduce((s,t)=>s+(num(t.betrag)||0),0);
     const steuerCounted=!!state.settings.steuerGlobalOn;
+    // Fremdwaehrungs-Guthaben. Das Konto haelt Dollar, gerechnet wird in Euro — was der
+    // Wechselkurs mit dem Guthaben macht, ist ein echtes Ergebnis und steckt in keiner
+    // Position. Ohne diese Zeile geht "Vermoegen minus Einzahlung = Gewinn" nicht auf.
+    // Bestand/Einstand/Realisiertes kommen aus dem Wochenlauf; den offenen Teil bewerten
+    // wir hier taeglich neu — deshalb steht in den Daten kein fertiges Ergebnis.
+    const _dv=pos.devisen||{}, _whg=_dv.whg||{}, _fxD=(state.settings&&state.settings.fxRates)||{};
+    let devReal=num(_dv.kosten)||0, devUnreal=0, devKursFehlt=false;
+    for(const c of Object.keys(_whg)){
+      const o=_whg[c]||{};
+      devReal+=num(o.real)||0;
+      const best=num(o.bestand)||0, ein=num(o.einstand)||0;
+      if(Math.abs(best)>1e-9){
+        const r=c==="EUR"?1:_fxD[c];
+        if(r>0) devUnreal+=best*r-ein; else devKursFehlt=true;   // lieber nichts als falsch
+      }
+    }
+    const devisen=devReal+devUnreal;
     // Cash-Konten sind immer EUR-nativ -> Eur-Felder = native Felder (keine Umrechnung nötig)
-    const gesamt=(divCounted?divs:0)+(steuerCounted?taxOptSum:0);
+    const gesamt=(divCounted?divs:0)+(steuerCounted?taxOptSum:0)+devisen;
     return {tx:[],realized:0,realizedEur:0,openQty:0,openCost:0,openCostEur:0,avg:0,curVal:bal,curValEur:bal,unreal:0,unrealEur:0,divs,divsEur:divs,
       gesamt,gesamtEur:gesamt,hasKurs:true,oversell:false,buyCostAll:0,
       gesamtPct:NaN,unrealPct:NaN,jahr:NaN,first:"",last:"",closed:false,days:0,perTx:{},kurs:bal,
       erstEinstieg:NaN,breakEven:NaN,beDelta:NaN,bePct:NaN,steuer:-taxOptSum,steuerCounted,taxOpt:taxOptSum,isCash:true,
-      archivReal:0,archivDivs:0};
+      archivReal:0,archivDivs:0,devisen,devReal,devUnreal,devKursFehlt};
   }
   // Transaktionen chronologisch (stabil nach Eingabereihenfolge)
   const tx=(pos.tx||[]).map((t,i)=>({...t,_i:i}))
@@ -978,6 +995,7 @@ function renderPos(p,m,idx){
           <div class="titel">${titelMitMarken(p.titel||"Verrechnungskonto",(p.broker?` <span class="badge">${esc(p.broker)}</span>`:"")+anteil)}</div>
           <div class="ph-sub">${m.divs?`<button class="divchip ${zaehlt?"":"off"}" onclick="toggleDivOff('${p.id}')" title="Zinsen in Gesamt mitzählen${hinweis}"><span class="cbox">${zaehlt?"✓":""}</span>Zinsen <span class="amt green">+${emoney(m.divs).replace("+","")}</span></button>`:""}
             ${m.taxOpt?`<button class="divchip ${taxZaehlt?"":"off"}" onclick="toggleSteuerGlobal()" title="TR-Steueroptimierung (Verlustverrechnung, netto) in Gesamt mitzählen"><span class="cbox">${taxZaehlt?"✓":""}</span>Steuer-Opt. <span class="amt ${cls(m.taxOpt)}">${signEur(m.taxOpt)}</span></button>`:""}
+            ${m.devisen||m.devKursFehlt?`<span class="archiv" title="Das Konto haelt Fremdwaehrung. Was der Wechselkurs seit dem Umtausch getan hat, zaehlt genauso wie ein Kursgewinn — plus die Umtausch- und Kontogebuehren, die sonst nirgends stehen.&#10;realisiert und Gebuehren ${emoney(m.devReal)} · offen ${m.devKursFehlt?"(Kurs fehlt)":emoney(m.devUnreal)}">Devisen <span class="amt ${cls(m.devisen)}">${signEur(m.devisen)}</span>${m.devKursFehlt?' <span class="nb">unvollständig</span>':""}</span>`:""}
             <button class="btn sec sm" onclick="openDiv('${p.id}')">+ Zins</button></div>
         </div>
         <div class="ph-right"><div class="ph-kurs">${feur(m.curVal)}</div></div>
@@ -1240,7 +1258,10 @@ async function refreshPrices(auto){
     }
     for(const s of syms) if(!quotes[s] && !dead[s] && !fail.some(f=>f.indexOf(s+" —")===0)) fail.push(s+" — kein Kurs (Ticker prüfen)");
     // Fremdwährungen → EUR (je Währung einmal, kostenlos ohne Key)
-    const posCurs=state.positions.map(p=>(p.currency||"EUR").toUpperCase()).filter(c=>c&&c!=="EUR");
+    // Auch die Waehrungen der Guthaben brauchen einen Kurs — sonst bleibt das
+    // Devisen-Ergebnis stehen, sobald die letzte Position in der Waehrung zu ist.
+    const posCurs=state.positions.flatMap(p=>[(p.currency||"EUR").toUpperCase()]
+      .concat(Object.keys((p.devisen&&p.devisen.whg)||{}).map(c=>c.toUpperCase()))).filter(c=>c&&c!=="EUR");
     const curs=[...new Set(Object.values(quotes).map(q=>q.cur).filter(c=>c&&c!=="EUR").concat(posCurs))];
     const fx={};
     for(const c of curs){ const r=await fxToEur(c); if(r) fx[c]=r; }
