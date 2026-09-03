@@ -426,10 +426,7 @@ function compute(pos){
     const divCounted=!pos.divOff && !state.settings.zinsGlobalOff;   // eigener Schalter fuer Zinsen
     // TR bucht ueber "Tax Optimisation" spaeter Steuer aus dem Verlusttopf zurueck (oder selten nach) —
     // das ist keinem Titel zuzuordnen, sondern reines Verrechnungskonto-Geschehen. + = Erstattung.
-    // Die Steuer auf eine Tilgung gehoert zur Tilgung: wer das Ereignis ausblendet,
-    // muss auch seine Steuer ausblenden — sonst bleibt ein Abzug ohne Gegenbuchung stehen.
-    const tilgAusC=!!(state.settings&&state.settings.sonderGlobalOff);
-    const taxOptSum=(pos.taxOpt||[]).reduce((s,t)=>s+((tilgAusC&&t.notiz==="Tilgung")?0:(num(t.betrag)||0)),0);
+    const taxOptSum=(pos.taxOpt||[]).reduce((s,t)=>s+(num(t.betrag)||0),0);
     const steuerCounted=!!state.settings.steuerGlobalOn;
     // Fremdwaehrungs-Guthaben. Das Konto haelt Dollar, gerechnet wird in Euro — was der
     // Wechselkurs mit dem Guthaben macht, ist ein echtes Ergebnis und steckt in keiner
@@ -469,16 +466,16 @@ function compute(pos){
   const lots=[];
   let realized=0, realizedEur=0, oversell=false, buyCostAll=0, steuerSum=0;
   const perTx={};           // Ergebnis je schließendem Trade (fürs Anzeigen der Paarung)
-  // Sondererträge = Gratisaktien + Tilgungen: zwei Dinge, die Trade Republic nicht zur
-  // Performance zaehlt, deshalb an EINEM Schalter. Tilgung eines ausgeknockten Zertifikats
-  // bucht TR als Rueckzahlung statt als Verkauf, die Auszahlung taucht dort nie auf ->
-  // Haken aus, und der Erloes dieser Buchung zaehlt mit 0. Das macht die Zahl bewusst
-  // falsch (das Geld ist real auf dem Konto) und ist nur zum Gegenrechnen da.
-  const tilgAus=!!(state.settings&&state.settings.sonderGlobalOff);
+  // Tilgungen (t.art==="tilg") zaehlen hier ganz normal als Verkauf zum Ruecknahmepreis.
+  // Es gab einen Versuch, sie per Schalter auszublenden, um die TR-Anzeige nachzubauen —
+  // widerlegt am 04.09.2026: TR zeigt bei einer Tilgung gar kein Ergebnis und laesst die
+  // ganze Tranche fallen, nicht nur die Auszahlung. Ueber alle acht getilgten Zertifikate
+  // waeren das +2.692 € zu TRs Gunsten gewesen, ihre Anzeige steht aber 1.230 € TIEFER.
+  // Die Marke bleibt in den Daten (sachlich richtig, fuer Auswertungen nuetzlich), der
+  // Schalter ist raus: lieber kein Schalter als einer auf widerlegter Annahme.
   for(const t of tx){
-    const st=num(t.stueck); let ku=num(t.kurs); const ge=num(t.gebuehr)||0;
+    const st=num(t.stueck), ku=num(t.kurs), ge=num(t.gebuehr)||0;
     if(!(st>0)||isNaN(ku))continue;
-    if(tilgAus && t.art==="tilg") ku=0;
     steuerSum+=num(t.steuer)||0;   // Steuer wird gesammelt, aber nur auf Wunsch verrechnet (s.u.)
     const fps=ge/st;                                 // Gebühr pro Stück
     const side=t.typ==="kauf"?"long":"short";        // Richtung dieses Trades
@@ -691,7 +688,7 @@ function render(){
     return;
   }
   // Portfolio-Summe
-  let tReal=0,tUnreal=0,tDiv=0,tDivOff=0,tCur=0,tGes=0,tSteuer=0,tCash=0,tZins=0,tZinsOff=0,tBonus=0,tTilg=0;
+  let tReal=0,tUnreal=0,tDiv=0,tDivOff=0,tCur=0,tGes=0,tSteuer=0,tCash=0,tZins=0,tZinsOff=0,tBonus=0;
   const metrics=state.positions.map(p=>{const m=compute(p);
     // *Eur-Felder sind schon korrekt umgerechnet: jede Buchung mit IHREM eigenen Tageskurs,
     // nur der heutige Depotwert mit dem aktuellen Kurs — kein pauschaler Kurs mehr fürs Ganze.
@@ -703,8 +700,7 @@ function render(){
     // stehen bei uns als Dividende, zaehlen bei TR aber gar nicht zur Performance
     // ("Ereignisse, die keinen Einfluss auf die Performance haben ... Gratisaktien").
     tBonus+=m.bonusEur||0;
-    for(const t of (p.tx||[])) if(t.art==="tilg") tTilg+=(num(t.stueck)||0)*(num(t.kurs)||0);
-    for(const t of (p.taxOpt||[])) if(t.notiz==="Tilgung") tTilg+=(num(t.betrag)||0);   // Steuer darauf gehoert dazu
+
     if(m.isCash){ tCash+=m.curValEur; } else if(m.hasKurs){ tUnreal+=m.unrealEur; tCur+=m.curValEur; }
     tGes+=m.gesamtEur; return m;});
   // NICHT die Kaufsumme aller Buchungen als Basis (wie bei der einzelnen Position) — bei wiederbespielten
@@ -768,10 +764,9 @@ function render(){
         // „Steuer" mit + statt mit dem fest verdrahteten Minus.
         const erstattung=tSteuer<0;
         return `<button class="divchip ${state.settings.steuerGlobalOn?"":"off"}" onclick="toggleSteuerGlobal()" title="Bereits einbehaltene Steuer (v. a. Trade Republic) abziehen, TR-Steueroptimierung netto eingerechnet — IBKR fehlt darin"><span class="cbox">${state.settings.steuerGlobalOn?"✓":""}</span><span class="chiptxt">Steuer <span class="amt ${erstattung?"green":"red"}">${erstattung?"+":"−"}${emoney(Math.abs(tSteuer))}</span></span></button>`;})():""}
-      ${(tBonus||tTilg)?(()=>{
-        const aus=state.settings.sonderGlobalOff, sum=tBonus+tTilg;
-        const teile=[tBonus?`Gratisaktien ${emoney(tBonus).replace("+","")}`:"", tTilg?`Tilgungen ${emoney(tTilg).replace("+","")}`:""].filter(Boolean).join(" · ");
-        return `<button class="divchip ${aus?"off":""}" onclick="toggleSonderGlobal()" title="${teile}&#10;&#10;Gratisaktien = Zuteilungen ohne Gegenleistung (Referral, Zusatzzahlung bei einer Uebernahme). Tilgungen = Rueckzahlungen ausgeknockter Zertifikate, die TR als Rueckzahlung statt als Verkauf bucht (Steuer darauf faellt mit weg).&#10;Beides zaehlt Trade Republic nicht zur Performance. Haken aus = TR-Sicht — die Zahl ist dann bewusst falsch, das Geld liegt real auf dem Konto."><span class="cbox">${aus?"":"✓"}</span><span class="chiptxt">Sondererträge <span class="amt green">+${emoney(sum).replace("+","")}</span></span></button>`;})():""}
+      ${tBonus?(()=>{
+        const aus=state.settings.sonderGlobalOff;
+        return `<button class="divchip ${aus?"off":""}" onclick="toggleSonderGlobal()" title="Teil der Dividenden: Zuteilungen ohne Gegenleistung (Referral-Aktien, Zusatzzahlung bei einer Uebernahme). Das ist der einzige Posten, den Trade Republic laut eigener Hilfeseite ausdruecklich nicht zur Performance zaehlt."><span class="cbox">${aus?"":"✓"}</span><span class="chiptxt">Gratisaktien <span class="amt green">+${emoney(tBonus).replace("+","")}</span></span></button>`;})():""}
     </div>`:""}
       <div class="spacer"></div>
       <span class="fussmeta">${hasSym&&upd?`Kurse ${new Date(upd).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}`:""}
