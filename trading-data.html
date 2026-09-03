@@ -428,7 +428,7 @@ function compute(pos){
     // das ist keinem Titel zuzuordnen, sondern reines Verrechnungskonto-Geschehen. + = Erstattung.
     // Die Steuer auf eine Tilgung gehoert zur Tilgung: wer das Ereignis ausblendet,
     // muss auch seine Steuer ausblenden — sonst bleibt ein Abzug ohne Gegenbuchung stehen.
-    const tilgAusC=!!(state.settings&&state.settings.tilgGlobalOff);
+    const tilgAusC=!!(state.settings&&state.settings.sonderGlobalOff);
     const taxOptSum=(pos.taxOpt||[]).reduce((s,t)=>s+((tilgAusC&&t.notiz==="Tilgung")?0:(num(t.betrag)||0)),0);
     const steuerCounted=!!state.settings.steuerGlobalOn;
     // Fremdwaehrungs-Guthaben. Das Konto haelt Dollar, gerechnet wird in Euro — was der
@@ -469,12 +469,12 @@ function compute(pos){
   const lots=[];
   let realized=0, realizedEur=0, oversell=false, buyCostAll=0, steuerSum=0;
   const perTx={};           // Ergebnis je schließendem Trade (fürs Anzeigen der Paarung)
-  // Tilgung eines ausgeknockten Zertifikats: TR bucht das als Rueckzahlung, nicht als
-  // Verkauf -- die Auszahlung taucht in ihrer Performance-Zahl nie auf. Wer die beiden
-  // Zahlen vergleichen will, muss dieselbe Sicht einnehmen koennen: Haken aus -> der
-  // Erloes dieser Buchung zaehlt mit 0. Das macht die Zahl bewusst falsch (das Geld ist
-  // real auf dem Konto) und ist nur zum Gegenrechnen da.
-  const tilgAus=!!(state.settings&&state.settings.tilgGlobalOff);
+  // Sondererträge = Gratisaktien + Tilgungen: zwei Dinge, die Trade Republic nicht zur
+  // Performance zaehlt, deshalb an EINEM Schalter. Tilgung eines ausgeknockten Zertifikats
+  // bucht TR als Rueckzahlung statt als Verkauf, die Auszahlung taucht dort nie auf ->
+  // Haken aus, und der Erloes dieser Buchung zaehlt mit 0. Das macht die Zahl bewusst
+  // falsch (das Geld ist real auf dem Konto) und ist nur zum Gegenrechnen da.
+  const tilgAus=!!(state.settings&&state.settings.sonderGlobalOff);
   for(const t of tx){
     const st=num(t.stueck); let ku=num(t.kurs); const ge=num(t.gebuehr)||0;
     if(!(st>0)||isNaN(ku))continue;
@@ -532,7 +532,7 @@ function compute(pos){
   // Teil von divs; der Haken zieht sie bei Bedarf wieder ab, statt sie doppelt zu fuehren.
   const bonus=(pos.div||[]).reduce((s,d)=>s+ (istBonusDiv(d)?(num(d.netto)||0):0),0);
   const bonusEur=(pos.div||[]).reduce((s,d)=>s+ (istBonusDiv(d)?(num(d.netto)||0)*fxVon(d,liveRate):0),0);
-  const bonusAb=!!(state.settings&&state.settings.bonusGlobalOff);
+  const bonusAb=!!(state.settings&&state.settings.sonderGlobalOff);
   const divCounted=!pos.divOff && !state.settings.divGlobalOff;   // global aus ODER pro Position abwählbar
   // Frühere, abgeschlossene Phasen liegen verdichtet als Jahreswerte vor (siehe archivBis).
   // Sie zählen in die Summen, aber NICHT in Break-even und Einstand — das ist ein anderer Play.
@@ -768,12 +768,10 @@ function render(){
         // „Steuer" mit + statt mit dem fest verdrahteten Minus.
         const erstattung=tSteuer<0;
         return `<button class="divchip ${state.settings.steuerGlobalOn?"":"off"}" onclick="toggleSteuerGlobal()" title="Bereits einbehaltene Steuer (v. a. Trade Republic) abziehen, TR-Steueroptimierung netto eingerechnet — IBKR fehlt darin"><span class="cbox">${state.settings.steuerGlobalOn?"✓":""}</span><span class="chiptxt">Steuer <span class="amt ${erstattung?"green":"red"}">${erstattung?"+":"−"}${emoney(Math.abs(tSteuer))}</span></span></button>`;})():""}
-      ${tBonus?(()=>{
-        const aus=state.settings.bonusGlobalOff;
-        return `<button class="divchip ${aus?"off":""}" onclick="toggleBonusGlobal()" title="Teil der Dividenden: Zuteilungen ohne Gegenleistung (Referral-Aktien, Zusatzzahlung bei einer Uebernahme). Trade Republic zaehlt sie nicht zur Performance — Haken aus, um dieselbe Sicht zu bekommen."><span class="cbox">${aus?"":"✓"}</span><span class="chiptxt">Gratisaktien <span class="amt green">+${emoney(tBonus).replace("+","")}</span></span></button>`;})():""}
-      ${tTilg?(()=>{
-        const aus=state.settings.tilgGlobalOff;
-        return `<button class="divchip ${aus?"off":""}" onclick="toggleTilgGlobal()" title="Teil von Realisiert: Rueckzahlungen ausgeknockter Zertifikate. Trade Republic bucht das als Tilgung statt als Verkauf und zeigt es nie in der Performance. Haken aus = TR-Sicht — die Zahl ist dann bewusst falsch, das Geld liegt real auf dem Konto."><span class="cbox">${aus?"":"✓"}</span><span class="chiptxt">Tilgungen <span class="amt green">+${emoney(tTilg).replace("+","")}</span></span></button>`;})():""}
+      ${(tBonus||tTilg)?(()=>{
+        const aus=state.settings.sonderGlobalOff, sum=tBonus+tTilg;
+        const teile=[tBonus?`Gratisaktien ${emoney(tBonus).replace("+","")}`:"", tTilg?`Tilgungen ${emoney(tTilg).replace("+","")}`:""].filter(Boolean).join(" · ");
+        return `<button class="divchip ${aus?"off":""}" onclick="toggleSonderGlobal()" title="${teile}&#10;&#10;Gratisaktien = Zuteilungen ohne Gegenleistung (Referral, Zusatzzahlung bei einer Uebernahme). Tilgungen = Rueckzahlungen ausgeknockter Zertifikate, die TR als Rueckzahlung statt als Verkauf bucht (Steuer darauf faellt mit weg).&#10;Beides zaehlt Trade Republic nicht zur Performance. Haken aus = TR-Sicht — die Zahl ist dann bewusst falsch, das Geld liegt real auf dem Konto."><span class="cbox">${aus?"":"✓"}</span><span class="chiptxt">Sondererträge <span class="amt green">+${emoney(sum).replace("+","")}</span></span></button>`;})():""}
     </div>`:""}
       <div class="spacer"></div>
       <span class="fussmeta">${hasSym&&upd?`Kurse ${new Date(upd).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}`:""}
@@ -1103,8 +1101,7 @@ function ersteSichtbareKarte(){
 function toggleDivGlobal(){state.settings.divGlobalOff=!state.settings.divGlobalOff;state.settings.divGlobalAt=Date.now();save();renderStable(ersteSichtbareKarte());syncPushLater();}
 function toggleZinsGlobal(){state.settings.zinsGlobalOff=!state.settings.zinsGlobalOff;state.settings.zinsGlobalAt=Date.now();save();renderStable(ersteSichtbareKarte());syncPushLater();}
 function toggleSteuerGlobal(){state.settings.steuerGlobalOn=!state.settings.steuerGlobalOn;state.settings.steuerGlobalAt=Date.now();save();renderStable(ersteSichtbareKarte());syncPushLater();}
-function toggleBonusGlobal(){state.settings.bonusGlobalOff=!state.settings.bonusGlobalOff;state.settings.bonusGlobalAt=Date.now();save();renderStable(ersteSichtbareKarte());syncPushLater();}
-function toggleTilgGlobal(){state.settings.tilgGlobalOff=!state.settings.tilgGlobalOff;state.settings.tilgGlobalAt=Date.now();save();renderStable(ersteSichtbareKarte());syncPushLater();}
+function toggleSonderGlobal(){state.settings.sonderGlobalOff=!state.settings.sonderGlobalOff;state.settings.sonderGlobalAt=Date.now();save();renderStable(ersteSichtbareKarte());syncPushLater();}
 function toggleSteuer(pid){const p=find(pid);if(!p)return;p.steuerOn=!p.steuerOn;touch(p);save();renderStable(pid);syncPushLater();}
 function find(pid){return state.positions.find(p=>p.id===pid);}
 
@@ -1378,7 +1375,7 @@ function u(o){return (o&&o._u)||0;}
 // Bewusst als Liste: vorher stand jeder Schalter an VIER Stellen ausgeschrieben, und
 // genau solche Vergessens-Stellen haben in diesem Tool schon zweimal Daten gekostet.
 const GFLAGS=[["divGlobalOff","divGlobalAt"],["steuerGlobalOn","steuerGlobalAt"],
-  ["zinsGlobalOff","zinsGlobalAt"],["bonusGlobalOff","bonusGlobalAt"],["tilgGlobalOff","tilgGlobalAt"]];
+  ["zinsGlobalOff","zinsGlobalAt"],["sonderGlobalOff","sonderGlobalAt"]];
 function gflagsVon(q){const o={};for(const [f,a] of GFLAGS){o[f]=!!q[f];o[a]=q[a]||0;}return o;}
 // Je Schalter gewinnt der juengere Zeitstempel — bei Gleichstand die lokale Seite.
 function gflagsMerge(local,remote){const o={};
