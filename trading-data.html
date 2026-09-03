@@ -415,6 +415,9 @@ function titelMitMarken(text, marken){
 // Kurs einer einzelnen Buchung (Kauf/Verkauf/Dividende) EUR je 1 Einheit Fremdwährung:
 // historisch (t.fx, vom Broker taggenau geliefert), sonst Rückfall auf den aktuellen Kurs.
 function fxVon(t, liveRate){ const v=num(t&&t.fx); return v>0?v:liveRate; }
+// Gratisaktie/Zusatzzahlung: seit dem Import per art-Marke, aeltere Eintraege nur am Text
+// erkennbar. Beides pruefen, damit von Hand nachgetragene Faelle weiter mitzaehlen.
+function istBonusDiv(d){ return d && (d.art==="bonus" || /bonus|zusatz/i.test(d.notiz||"")); }
 function compute(pos){
   // Cash-Konto: kein FIFO, kein Break-even — nur Saldo (+ Zinsen als „Dividende")
   if(pos.cash){
@@ -423,7 +426,10 @@ function compute(pos){
     const divCounted=!pos.divOff && !state.settings.zinsGlobalOff;   // eigener Schalter fuer Zinsen
     // TR bucht ueber "Tax Optimisation" spaeter Steuer aus dem Verlusttopf zurueck (oder selten nach) —
     // das ist keinem Titel zuzuordnen, sondern reines Verrechnungskonto-Geschehen. + = Erstattung.
-    const taxOptSum=(pos.taxOpt||[]).reduce((s,t)=>s+(num(t.betrag)||0),0);
+    // Die Steuer auf eine Tilgung gehoert zur Tilgung: wer das Ereignis ausblendet,
+    // muss auch seine Steuer ausblenden — sonst bleibt ein Abzug ohne Gegenbuchung stehen.
+    const tilgAusC=!!(state.settings&&state.settings.tilgGlobalOff);
+    const taxOptSum=(pos.taxOpt||[]).reduce((s,t)=>s+((tilgAusC&&t.notiz==="Tilgung")?0:(num(t.betrag)||0)),0);
     const steuerCounted=!!state.settings.steuerGlobalOn;
     // Fremdwaehrungs-Guthaben. Das Konto haelt Dollar, gerechnet wird in Euro — was der
     // Wechselkurs mit dem Guthaben macht, ist ein echtes Ergebnis und steckt in keiner
@@ -448,7 +454,7 @@ function compute(pos){
       gesamt,gesamtEur:gesamt,hasKurs:true,oversell:false,buyCostAll:0,
       gesamtPct:NaN,unrealPct:NaN,jahr:NaN,first:"",last:"",closed:false,days:0,perTx:{},kurs:bal,
       erstEinstieg:NaN,breakEven:NaN,beDelta:NaN,bePct:NaN,steuer:-taxOptSum,steuerCounted,taxOpt:taxOptSum,isCash:true,
-      archivReal:0,archivDivs:0,devisen,devReal,devUnreal,devKursFehlt};
+      archivReal:0,archivDivs:0,bonus:0,bonusEur:0,devisen,devReal,devUnreal,devKursFehlt};
   }
   // Transaktionen chronologisch (stabil nach Eingabereihenfolge)
   const tx=(pos.tx||[]).map((t,i)=>({...t,_i:i}))
@@ -463,9 +469,16 @@ function compute(pos){
   const lots=[];
   let realized=0, realizedEur=0, oversell=false, buyCostAll=0, steuerSum=0;
   const perTx={};           // Ergebnis je schließendem Trade (fürs Anzeigen der Paarung)
+  // Tilgung eines ausgeknockten Zertifikats: TR bucht das als Rueckzahlung, nicht als
+  // Verkauf -- die Auszahlung taucht in ihrer Performance-Zahl nie auf. Wer die beiden
+  // Zahlen vergleichen will, muss dieselbe Sicht einnehmen koennen: Haken aus -> der
+  // Erloes dieser Buchung zaehlt mit 0. Das macht die Zahl bewusst falsch (das Geld ist
+  // real auf dem Konto) und ist nur zum Gegenrechnen da.
+  const tilgAus=!!(state.settings&&state.settings.tilgGlobalOff);
   for(const t of tx){
-    const st=num(t.stueck), ku=num(t.kurs), ge=num(t.gebuehr)||0;
+    const st=num(t.stueck); let ku=num(t.kurs); const ge=num(t.gebuehr)||0;
     if(!(st>0)||isNaN(ku))continue;
+    if(tilgAus && t.art==="tilg") ku=0;
     steuerSum+=num(t.steuer)||0;   // Steuer wird gesammelt, aber nur auf Wunsch verrechnet (s.u.)
     const fps=ge/st;                                 // Gebühr pro Stück
     const side=t.typ==="kauf"?"long":"short";        // Richtung dieses Trades
@@ -514,14 +527,21 @@ function compute(pos){
   const unrealEur=hasKurs?curValEur-openCostEur:0;
   const divs=(pos.div||[]).reduce((s,d)=>s+ (num(d.netto)||0),0);
   const divsEur=(pos.div||[]).reduce((s,d)=>s+ (num(d.netto)||0)*fxVon(d,liveRate),0);
+  // Zuteilungen ohne Gegenleistung (Referral-Aktien, Zusatzzahlung bei einer Uebernahme)
+  // stehen bei uns als Dividende -- TR laesst sie aus der Performance heraus. Sie bleiben
+  // Teil von divs; der Haken zieht sie bei Bedarf wieder ab, statt sie doppelt zu fuehren.
+  const bonus=(pos.div||[]).reduce((s,d)=>s+ (istBonusDiv(d)?(num(d.netto)||0):0),0);
+  const bonusEur=(pos.div||[]).reduce((s,d)=>s+ (istBonusDiv(d)?(num(d.netto)||0)*fxVon(d,liveRate):0),0);
+  const bonusAb=!!(state.settings&&state.settings.bonusGlobalOff);
   const divCounted=!pos.divOff && !state.settings.divGlobalOff;   // global aus ODER pro Position abwählbar
   // Frühere, abgeschlossene Phasen liegen verdichtet als Jahreswerte vor (siehe archivBis).
   // Sie zählen in die Summen, aber NICHT in Break-even und Einstand — das ist ein anderer Play.
   // (Immer TR/EUR -> keine Fremdwährungs-Umrechnung nötig, in EUR und nativ identisch.)
   const summe=o=>Object.values(o||{}).reduce((a,b)=>a+(+b||0),0);
   const archivReal=summe(pos.archiv), archivDivs=summe(pos.archivDiv), archivSteuer=summe(pos.archivSteuer);
-  const gesamt=realized+(hasKurs?unreal:0)+(divCounted?divs:0)+archivReal+(divCounted?archivDivs:0)-(steuerCounted?archivSteuer:0);
-  const gesamtEur=realizedEur+(hasKurs?unrealEur:0)+(divCounted?divsEur:0)+archivReal+(divCounted?archivDivs:0)-(steuerCounted?archivSteuer:0);
+  const divZ=divCounted?(divs-(bonusAb?bonus:0)):0, divZEur=divCounted?(divsEur-(bonusAb?bonusEur:0)):0;
+  const gesamt=realized+(hasKurs?unreal:0)+divZ+archivReal+(divCounted?archivDivs:0)-(steuerCounted?archivSteuer:0);
+  const gesamtEur=realizedEur+(hasKurs?unrealEur:0)+divZEur+archivReal+(divCounted?archivDivs:0)-(steuerCounted?archivSteuer:0);
   // Zeit & Jahresrendite
   const dates=tx.map(t=>t.datum).filter(Boolean).sort();
   const first=dates[0], last=dates[dates.length-1];
@@ -538,7 +558,7 @@ function compute(pos){
   const breakEven=openQty>0?(openCost-realized-(divCounted?divs:0))/openQty:NaN;
   const beDelta=(!isNaN(erstEinstieg)&&!isNaN(breakEven))?breakEven-erstEinstieg:NaN;
   const bePct=(!isNaN(beDelta)&&erstEinstieg)?beDelta/erstEinstieg*100:NaN;
-  return {tx,realized,realizedEur,openQty,openCost,openCostEur,avg,curVal,curValEur,unreal,unrealEur,divs,divsEur,gesamt,gesamtEur,hasKurs,
+  return {tx,realized,realizedEur,openQty,openCost,openCostEur,avg,curVal,curValEur,unreal,unrealEur,divs,divsEur,bonus,bonusEur,gesamt,gesamtEur,hasKurs,
     oversell,buyCostAll,gesamtPct,unrealPct,jahr,first,last,closed,days,perTx,kurs,
     erstEinstieg,breakEven,beDelta,bePct,steuer:steuerSum+archivSteuer,steuerCounted,archivReal,archivDivs};
 }
@@ -671,7 +691,7 @@ function render(){
     return;
   }
   // Portfolio-Summe
-  let tReal=0,tUnreal=0,tDiv=0,tDivOff=0,tCur=0,tGes=0,tSteuer=0,tCash=0,tZins=0,tZinsOff=0,tBonus=0;
+  let tReal=0,tUnreal=0,tDiv=0,tDivOff=0,tCur=0,tGes=0,tSteuer=0,tCash=0,tZins=0,tZinsOff=0,tBonus=0,tTilg=0;
   const metrics=state.positions.map(p=>{const m=compute(p);
     // *Eur-Felder sind schon korrekt umgerechnet: jede Buchung mit IHREM eigenen Tageskurs,
     // nur der heutige Depotwert mit dem aktuellen Kurs — kein pauschaler Kurs mehr fürs Ganze.
@@ -682,7 +702,9 @@ function render(){
     // Ertraege ohne Gegenleistung (Referral-Aktien, Zusatzzahlung bei Uebernahme):
     // stehen bei uns als Dividende, zaehlen bei TR aber gar nicht zur Performance
     // ("Ereignisse, die keinen Einfluss auf die Performance haben ... Gratisaktien").
-    for(const dv of (p.div||[])) if(/bonus|zusatz/i.test(dv.notiz||"")) tBonus+=(num(dv.netto)||0);
+    tBonus+=m.bonusEur||0;
+    for(const t of (p.tx||[])) if(t.art==="tilg") tTilg+=(num(t.stueck)||0)*(num(t.kurs)||0);
+    for(const t of (p.taxOpt||[])) if(t.notiz==="Tilgung") tTilg+=(num(t.betrag)||0);   // Steuer darauf gehoert dazu
     if(m.isCash){ tCash+=m.curValEur; } else if(m.hasKurs){ tUnreal+=m.unrealEur; tCur+=m.curValEur; }
     tGes+=m.gesamtEur; return m;});
   // NICHT die Kaufsumme aller Buchungen als Basis (wie bei der einzelnen Position) — bei wiederbespielten
@@ -746,9 +768,14 @@ function render(){
         // „Steuer" mit + statt mit dem fest verdrahteten Minus.
         const erstattung=tSteuer<0;
         return `<button class="divchip ${state.settings.steuerGlobalOn?"":"off"}" onclick="toggleSteuerGlobal()" title="Bereits einbehaltene Steuer (v. a. Trade Republic) abziehen, TR-Steueroptimierung netto eingerechnet — IBKR fehlt darin"><span class="cbox">${state.settings.steuerGlobalOn?"✓":""}</span><span class="chiptxt">Steuer <span class="amt ${erstattung?"green":"red"}">${erstattung?"+":"−"}${emoney(Math.abs(tSteuer))}</span></span></button>`;})():""}
+      ${tBonus?(()=>{
+        const aus=state.settings.bonusGlobalOff;
+        return `<button class="divchip ${aus?"off":""}" onclick="toggleBonusGlobal()" title="Teil der Dividenden: Zuteilungen ohne Gegenleistung (Referral-Aktien, Zusatzzahlung bei einer Uebernahme). Trade Republic zaehlt sie nicht zur Performance — Haken aus, um dieselbe Sicht zu bekommen."><span class="cbox">${aus?"":"✓"}</span><span class="chiptxt">Gratisaktien <span class="amt green">+${emoney(tBonus).replace("+","")}</span></span></button>`;})():""}
+      ${tTilg?(()=>{
+        const aus=state.settings.tilgGlobalOff;
+        return `<button class="divchip ${aus?"off":""}" onclick="toggleTilgGlobal()" title="Teil von Realisiert: Rueckzahlungen ausgeknockter Zertifikate. Trade Republic bucht das als Tilgung statt als Verkauf und zeigt es nie in der Performance. Haken aus = TR-Sicht — die Zahl ist dann bewusst falsch, das Geld liegt real auf dem Konto."><span class="cbox">${aus?"":"✓"}</span><span class="chiptxt">Tilgungen <span class="amt green">+${emoney(tTilg).replace("+","")}</span></span></button>`;})():""}
     </div>`:""}
       <div class="spacer"></div>
-      ${tBonus?`<div class="trhint" title="Trade Republic zaehlt zur Performance nur Handel, Dividenden, Gebuehren und Steuern. Zuteilungen ohne Gegenleistung (Referral-Aktien, Zusatzzahlung bei einer Uebernahme) bleiben dort aussen vor, Zinsen aufs Guthaben ebenfalls — deshalb steht das Tool hoeher als die TR-Anzeige.">TR ohne: Bonus <b>${emoney(tBonus).replace("+","")}</b> · Zinsen per Haken</div>`:""}
       <span class="fussmeta">${hasSym&&upd?`Kurse ${new Date(upd).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}`:""}
         <span class="badge" title="Aktuell gehaltene Wertpapiere (ohne geschlossene und ohne Cash)">${
         metrics.filter((m,i)=>!state.positions[i].cash && m.openQty>1e-9).length} gehalten</span></span>
@@ -1076,6 +1103,8 @@ function ersteSichtbareKarte(){
 function toggleDivGlobal(){state.settings.divGlobalOff=!state.settings.divGlobalOff;state.settings.divGlobalAt=Date.now();save();renderStable(ersteSichtbareKarte());syncPushLater();}
 function toggleZinsGlobal(){state.settings.zinsGlobalOff=!state.settings.zinsGlobalOff;state.settings.zinsGlobalAt=Date.now();save();renderStable(ersteSichtbareKarte());syncPushLater();}
 function toggleSteuerGlobal(){state.settings.steuerGlobalOn=!state.settings.steuerGlobalOn;state.settings.steuerGlobalAt=Date.now();save();renderStable(ersteSichtbareKarte());syncPushLater();}
+function toggleBonusGlobal(){state.settings.bonusGlobalOff=!state.settings.bonusGlobalOff;state.settings.bonusGlobalAt=Date.now();save();renderStable(ersteSichtbareKarte());syncPushLater();}
+function toggleTilgGlobal(){state.settings.tilgGlobalOff=!state.settings.tilgGlobalOff;state.settings.tilgGlobalAt=Date.now();save();renderStable(ersteSichtbareKarte());syncPushLater();}
 function toggleSteuer(pid){const p=find(pid);if(!p)return;p.steuerOn=!p.steuerOn;touch(p);save();renderStable(pid);syncPushLater();}
 function find(pid){return state.positions.find(p=>p.id===pid);}
 
@@ -1345,12 +1374,22 @@ function b64encode(str){ // in Blöcken kodieren, sonst sprengt fromCharCode.app
 function b64decode(b64){return new TextDecoder().decode(Uint8Array.from(atob(b64),c=>c.charCodeAt(0)));}
 function u(o){return (o&&o._u)||0;}
 
+// Globale Schalter, die mitgesynct werden: [Wert-Feld, Zeitstempel-Feld].
+// Bewusst als Liste: vorher stand jeder Schalter an VIER Stellen ausgeschrieben, und
+// genau solche Vergessens-Stellen haben in diesem Tool schon zweimal Daten gekostet.
+const GFLAGS=[["divGlobalOff","divGlobalAt"],["steuerGlobalOn","steuerGlobalAt"],
+  ["zinsGlobalOff","zinsGlobalAt"],["bonusGlobalOff","bonusGlobalAt"],["tilgGlobalOff","tilgGlobalAt"]];
+function gflagsVon(q){const o={};for(const [f,a] of GFLAGS){o[f]=!!q[f];o[a]=q[a]||0;}return o;}
+// Je Schalter gewinnt der juengere Zeitstempel — bei Gleichstand die lokale Seite.
+function gflagsMerge(local,remote){const o={};
+  for(const [f,a] of GFLAGS){const lo=local[a]||0, ro=remote[a]||0;
+    o[f]= ro>lo ? !!remote[f] : !!local[f]; o[a]=Math.max(lo,ro);}
+  return o;}
+
 // Gesynct werden Positionen + Tombstones + der Zuklapp-Zustand (KEINE Token/Keys)
-function syncPayload(){return {positions:state.positions, tombstones:state.tombstones||{},
-  collapsed:state.settings.collapsed||{}, collapsedAt:state.settings.collapsedAt||0,
-  divGlobalOff:!!state.settings.divGlobalOff, divGlobalAt:state.settings.divGlobalAt||0,
-  steuerGlobalOn:!!state.settings.steuerGlobalOn, steuerGlobalAt:state.settings.steuerGlobalAt||0,
-  zinsGlobalOff:!!state.settings.zinsGlobalOff, zinsGlobalAt:state.settings.zinsGlobalAt||0, syncedAt:Date.now()};}
+function syncPayload(){return Object.assign({positions:state.positions, tombstones:state.tombstones||{},
+  collapsed:state.settings.collapsed||{}, collapsedAt:state.settings.collapsedAt||0},
+  gflagsVon(state.settings), {syncedAt:Date.now()});}
 
 // Zwei Listen (tx bzw. div) nach id + Änderungszeit + Tombstones zusammenführen
 function mergeList(a,b,tomb){
@@ -1400,13 +1439,8 @@ function mergeStates(local,remote){
   // Zuklapp-Zustand: die zuletzt geänderte Ansicht gewinnt (Last-Writer-Wins per Zeitstempel)
   const lAt=local.collapsedAt||0, rAt=remote.collapsedAt||0;
   const collapsed = rAt>lAt ? (remote.collapsed||{}) : (local.collapsed||{});
-  const dAt=Math.max(local.divGlobalAt||0, remote.divGlobalAt||0);
-  const divGlobalOff = (remote.divGlobalAt||0)>(local.divGlobalAt||0) ? !!remote.divGlobalOff : !!local.divGlobalOff;
-  const sAt=Math.max(local.steuerGlobalAt||0, remote.steuerGlobalAt||0);
-  const steuerGlobalOn = (remote.steuerGlobalAt||0)>(local.steuerGlobalAt||0) ? !!remote.steuerGlobalOn : !!local.steuerGlobalOn;
-  const zAt=Math.max(local.zinsGlobalAt||0, remote.zinsGlobalAt||0);
-  const zinsGlobalOff = (remote.zinsGlobalAt||0)>(local.zinsGlobalAt||0) ? !!remote.zinsGlobalOff : !!local.zinsGlobalOff;
-  return {positions, tombstones:tomb, collapsed, collapsedAt:Math.max(lAt,rAt), divGlobalOff, divGlobalAt:dAt, steuerGlobalOn, steuerGlobalAt:sAt, zinsGlobalOff, zinsGlobalAt:zAt};
+  return Object.assign({positions, tombstones:tomb, collapsed, collapsedAt:Math.max(lAt,rAt)},
+    gflagsMerge(local, remote));
 }
 
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -1502,16 +1536,12 @@ async function fullSync(manual){
     let done=false, lastErr=null;
     for(let attempt=0; attempt<5 && !done; attempt++){
       const {data:remote,sha}=await ghGet();     // cache-umgehend → aktuelle sha
-      const merged=mergeStates({positions:state.positions,tombstones:state.tombstones,
-        collapsed:state.settings.collapsed,collapsedAt:state.settings.collapsedAt,
-        divGlobalOff:state.settings.divGlobalOff,divGlobalAt:state.settings.divGlobalAt,
-        steuerGlobalOn:state.settings.steuerGlobalOn,steuerGlobalAt:state.settings.steuerGlobalAt,
-        zinsGlobalOff:state.settings.zinsGlobalOff,zinsGlobalAt:state.settings.zinsGlobalAt}, remote);
+      const merged=mergeStates(Object.assign({positions:state.positions,tombstones:state.tombstones,
+        collapsed:state.settings.collapsed,collapsedAt:state.settings.collapsedAt},
+        gflagsVon(state.settings)), remote);
       state.positions=merged.positions; state.tombstones=merged.tombstones;
       state.settings.collapsed=merged.collapsed; state.settings.collapsedAt=merged.collapsedAt;
-      state.settings.divGlobalOff=merged.divGlobalOff; state.settings.divGlobalAt=merged.divGlobalAt;
-      state.settings.steuerGlobalOn=merged.steuerGlobalOn; state.settings.steuerGlobalAt=merged.steuerGlobalAt;
-      state.settings.zinsGlobalOff=merged.zinsGlobalOff; state.settings.zinsGlobalAt=merged.zinsGlobalAt;
+      for(const [f,a] of GFLAGS){ state.settings[f]=merged[f]; state.settings[a]=merged[a]; }
       save(); render();
       const pl=syncPayload();
       if(_syncUnchanged(pl, remote)){ done=true; break; }   // nichts geändert → kein Commit (spart Leer-Commits)
@@ -1967,10 +1997,11 @@ function tdBuildPlan(text){
     if(ty==="TILG") continue;   // Auszahlung wird über den zugehörigen WARRANT_EXERCISE verbucht
     if(/STOCK.?DIVIDEND|OPTIONAL.?DIVIDEND/.test(ty) && Math.abs(anspruch[(r.symbol||"").trim()]||0)<1e-4) continue;   // bar gewählt → hebt sich auf
     const dt=(r.date||"").slice(0,10); const isin0=(r.symbol||"").trim();
-    let kind, stueck, kurs, frei=false;
+    let kind, stueck, kurs, frei=false, art="";
     if(ty==="WARRANT_EXERCISE"){
       stueck=Math.abs(tdCsvNum(r.shares)||0); if(!stueck){noWP++;continue;}
       kind="verkauf"; kurs=(redeem[(r.symbol||"").trim()+"|"+dt]||0)/stueck;   // Rücknahmepreis pro Stück
+      art="tilg";   // fuer den Haken "Tilgungen": TR zeigt diese Auszahlung nie in der Performance
     } else {
       kind=tdClassify(r); if(!kind){noWP++;continue;}
       stueck=Math.abs(tdCsvNum(r.shares)||0); kurs=Math.abs(tdCsvNum(r.price)||0);
@@ -1992,7 +2023,7 @@ function tdBuildPlan(text){
     if(archivBis[broker+"|"+isin] && dt<=archivBis[broker+"|"+isin]){ skipped++; continue; }   // liegt im verdichteten Archiv
     const isKnown = knownIsin.has(broker+"|"+isin) || knownName.has(broker+"|"+tdNorm(name)) || !!isinMap[isin];
     if(!isKnown){ if(!unknown[isin])unknown[isin]={isin,name,count:0,last:"",held:(net[isin]||0)>0.0001,broker}; unknown[isin].count++; if(dt>unknown[isin].last)unknown[isin].last=dt; }
-    cand.push({ isin, name, kind, trid, datum:dt, broker, stueck, kurs, frei,
+    cand.push({ isin, name, kind, trid, datum:dt, broker, stueck, kurs, frei, art,
       fee:Math.abs(tdCsvNum(r.fee)||0), tax:Math.abs(tdCsvNum(r.tax)||0), amount:Math.abs(tdCsvNum(r.amount)||0),
       netto:(tdCsvNum(r.amount)||0)+(tdCsvNum(r.tax)||0) }); }
   // Kontostand: Betrag + Steuer + Gebühr über ALLE Zeilen. Achtung, das Vorzeichen steht
@@ -2053,11 +2084,11 @@ function tdSimulate(assign, mutate){
       else { const d={id:uid(),datum:c.datum,netto:tdFmt(netto),trid:c.trid,_u:now}; (p.div||(p.div=[])).push(d); used[p.id].add(d.id); added++; }   // alle Dividenden (per trid dublettensicher)
     } else {
       const m=(p.tx||[]).find(t=>!used[p.id].has(t.id)&&!t.trid&&t.typ===c.kind&&(t.datum||"").slice(0,10)===c.datum&&Math.abs((num(t.stueck)||0)-c.stueck)<0.001&&Math.abs((num(t.kurs)||0)-c.kurs)<Math.max(0.02,c.kurs*0.01));
-      if(m){ if(c.tax)m.steuer=tdFmt(c.tax); if(c.fee&&!(num(m.gebuehr)>0))m.gebuehr=tdFmt(c.fee); m.trid=c.trid; if(mutate)touch(m); used[p.id].add(m.id); backfill++; }
+      if(m){ if(c.tax)m.steuer=tdFmt(c.tax); if(c.fee&&!(num(m.gebuehr)>0))m.gebuehr=tdFmt(c.fee); if(c.art&&!m.art)m.art=c.art; m.trid=c.trid; if(mutate)touch(m); used[p.id].add(m.id); backfill++; }
       // Nur was wirklich drinsteht: keine leeren gebuehr/steuer-Felder, keine Standard-Notiz.
       // Die aussagekräftige Kapitalmaßnahmen-Notiz bleibt — die will man beim Prüfen sehen.
       else if(isNew[p.id]||c.datum>(posMaxDate[p.id]||"")){ const t={id:uid(),typ:c.kind,datum:c.datum,stueck:tdFmt(c.stueck),kurs:tdFmt(c.kurs),trid:c.trid,_u:now};
-        if(c.fee)t.gebuehr=tdFmt(c.fee); if(c.tax)t.steuer=tdFmt(c.tax); if(c.frei)t.notiz="Kapitalmaßnahme – Einstand prüfen";
+        if(c.fee)t.gebuehr=tdFmt(c.fee); if(c.tax)t.steuer=tdFmt(c.tax); if(c.art)t.art=c.art; if(c.frei)t.notiz="Kapitalmaßnahme – Einstand prüfen";
         (p.tx||(p.tx=[])).push(t); used[p.id].add(t.id); added++; }
       else skippedBaseline++;
     }
