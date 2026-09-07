@@ -28,6 +28,9 @@ const bar=document.createElement('div'); bar.className='azbar';
 bar.innerHTML=B.map(c=>'<b data-c="'+c+'">'+c+'</b>').join('');
 document.body.appendChild(bar);
 let mo=0,mu=1,n=B.length,anker=[],fAkt=0,letztY=0,an=false,pid=null,ereignisse=0,ups=0,starts=0;
+// Extremwerte merken, damit man NACH dem Loslassen in Ruhe einen Screenshot machen kann.
+let dMin=0,dMax=0,fMin=99,fMax=-99,satUnten=0,satOben=0,yMin=1e9,yMax=-1e9,typ='-',
+    sprungGross=0, letzteScroll=null, scrollSpruenge=0;
 function messen(){
   const k=[...bar.children];
   const a=k[0].getBoundingClientRect(), z=k[n-1].getBoundingClientRect();
@@ -43,7 +46,14 @@ function zeig(extra){
    +'Leiste  mo <b>'+mo.toFixed(1)+'</b>  mu <b>'+mu.toFixed(1)+'</b>  Spanne <b>'+(mu-mo).toFixed(1)+'</b>\n'
    +'Anker   erster <b>'+Math.round(anker[0])+'</b>  letzter <b>'+Math.round(anker[n-1])+'</b>\n'
    +(extra||'')
-   +'\nstarts <b>'+starts+'</b>  moves <b>'+ereignisse+'</b>  ups <b>'+ups+'</b>  an=<b>'+an+'</b>';
+   +'\nstarts <b>'+starts+'</b>  moves <b>'+ereignisse+'</b>  ups <b>'+ups+'</b>  an=<b>'+an+'</b>  typ <b>'+typ+'</b>\n'
+   +'\nGEMERKT (bleibt nach dem Loslassen stehen)\n'
+   +'  clientY von <b>'+(yMin<1e9?yMin.toFixed(0):'-')+'</b> bis <b>'+(yMax>-1e9?yMax.toFixed(0):'-')+'</b>'
+   +'   also <b>'+((yMax>-1e9)?(yMax-yMin).toFixed(0):'-')+'</b> px bewegt\n'
+   +'  delta  kleinstes <b>'+dMin.toFixed(1)+'</b>  groesstes <b>'+dMax.toFixed(1)+'</b>\n'
+   +'  fAkt   von <b>'+(fMin<99?fMin.toFixed(2):'-')+'</b> bis <b>'+(fMax>-99?fMax.toFixed(2):'-')+'</b>\n'
+   +'  am Anschlag: unten <b>'+satUnten+'</b>x  oben <b>'+satOben+'</b>x\n'
+   +'  Scroll-Spruenge ueber 3000 px: <b>'+scrollSpruenge+'</b>  groesster <b>'+Math.round(sprungGross)+'</b>';
 }
 messen(); zeig('');
 bar.addEventListener('pointerdown',e=>{
@@ -56,8 +66,17 @@ bar.addEventListener('pointerdown',e=>{
 bar.addEventListener('pointermove',e=>{
   if(!an||e.pointerId!==pid) return; e.preventDefault(); ereignisse++;
   const d=e.clientY-letztY;
-  fAkt=Math.max(0,Math.min(n-1,fAkt+d*(n-1)/(mu-mo))); letztY=e.clientY;
+  typ=e.pointerType||'-';
+  yMin=Math.min(yMin,e.clientY); yMax=Math.max(yMax,e.clientY);
+  if(d<dMin)dMin=d; if(d>dMax)dMax=d;
+  const roh=fAkt+d*(n-1)/(mu-mo);
+  if(roh<0)satUnten++; if(roh>n-1)satOben++;
+  fAkt=Math.max(0,Math.min(n-1,roh)); letztY=e.clientY;
+  if(fAkt<fMin)fMin=fAkt; if(fAkt>fMax)fMax=fAkt;
   const i=Math.max(0,Math.min(n-1,Math.round(fAkt)));
+  if(letzteScroll!=null){ const sp=Math.abs(anker[i]-letzteScroll);
+    if(sp>3000){ scrollSpruenge++; if(sp>sprungGross) sprungGross=sp; } }
+  letzteScroll=anker[i];
   window.scrollTo(0,anker[i]);
   zeig('ZIEHEN  clientY <b>'+e.clientY.toFixed(1)+'</b>  delta <b>'+d.toFixed(1)+'</b>\n'
       +'        fAkt <b>'+fAkt.toFixed(2)+'</b>  Buchstabe <b>'+B[i]+'</b>  scrollY <b>'+Math.round(scrollY)+'</b>\n');
