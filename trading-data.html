@@ -1254,7 +1254,7 @@ function azLeiste(){
   // uebersprungen — bestaetigt ihn das naechste Ereignis, wird er doch genommen.
   // Damit blockiert der Filter keine echte schnelle Bewegung.
   const SPRUNG=80;
-  let letztGut=null, verdaechtig=null;
+  let letztGut=null, verdaechtig=null, gezeigt=null;
   const indexVon=e=>{
     if(nEintr<2) return 0;
     return (Math.max(mo,Math.min(e.clientY,mu))-mo)/(mu-mo)*(nEintr-1);
@@ -1282,7 +1282,12 @@ function azLeiste(){
     const i=Math.max(0,Math.min(anker.length-1,Math.floor(f)));
     const j=Math.min(anker.length-1,i+1), t=Math.max(0,Math.min(1,f-i));
     window.scrollTo(0, Math.round(anker[i]+(anker[j]-anker[i])*t));
-    const c=vorhanden[Math.round(f)];
+    // Hysterese fuers Etikett: erst wechseln, wenn der Finger DEUTLICH im naechsten Feld
+    // steht. Ohne das flackert es an jeder Grenze zwischen zwei Buchstaben hin und her —
+    // das iPhone feuert mit 0,3-px-Zittern, gemessen 23 Wechsel bei 24 Ereignissen.
+    // Der Scroll bleibt davon unberuehrt, der laeuft weiter stufenlos.
+    if(gezeigt==null || Math.abs(f-gezeigt)>0.65) gezeigt=Math.round(f);
+    const c=vorhanden[gezeigt];
     if(c && lab.textContent!==c) lab.textContent=c;
     lab.style.top=Math.max(58, Math.min(letzteY, innerHeight-58))+"px";
     lab.classList.add("an");
@@ -1301,7 +1306,7 @@ function azLeiste(){
     if(ausblenden){ clearTimeout(ausblenden); ausblenden=null; }
     // Ohne Capture liefert die Leiste keine Bewegungen mehr, sobald der Finger sie verlaesst.
     try{ bar.setPointerCapture(e.pointerId); }catch(_){}
-    messen(); letztGut=null; verdaechtig=null;
+    messen(); letztGut=null; verdaechtig=null; gezeigt=null;
     geprueft(e); springe(indexVon(e)); };
   // Nur der Finger, der aufgesetzt hat: ein zweiter (oder der Handballen) wuerde sonst
   // mit seiner eigenen Hoehe dazwischenfunken und die Liste wegreissen.
