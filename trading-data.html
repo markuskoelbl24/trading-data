@@ -309,11 +309,15 @@
   .azbar.aktiv b.pkt{opacity:.7}
   /* Dezenter Hinweis am LINKEN Rand auf Fingerhoehe: rechts liegt der Daumen,
      mittig verdeckt es die Liste. Bewusst blass — es soll bestaetigen, nicht praesentieren. */
-  .azlab{position:fixed;left:12px;z-index:41;transform:translateY(-50%);
-    min-width:34px;height:34px;padding:0 8px;border-radius:11px;
-    background:rgba(18,24,32,.78);
-    font:700 19px/1 var(--f-mono);color:var(--txt);opacity:.72;pointer-events:none;
-    display:none;align-items:center;justify-content:center}
+  /* Deutlich als schwebend erkennbar — sonst liest man es als verirrten Buchstaben
+     zwischen den Karten. Im Video sieht man genau das: ein einzelnes "A" mitten auf
+     einer Position. Also Rahmen, Schatten, deckender Grund. */
+  .azlab{position:fixed;left:10px;z-index:41;transform:translateY(-50%);
+    min-width:38px;height:32px;padding:0 9px;border-radius:16px;
+    background:rgba(10,14,19,.9);border:1px solid var(--rule);
+    font:700 17px/1 var(--f-mono);color:var(--txt);pointer-events:none;
+    display:none;align-items:center;justify-content:center;
+    box-shadow:0 3px 10px rgba(0,0,0,.5)}
   .azlab.an{display:flex}
   /* Klebende Buchstaben-Ueberschrift in der Liste: bleibt unter der angedockten
      Kopfleiste stehen, bis der naechste Buchstabe sie hochschiebt. Deckender
@@ -1279,7 +1283,11 @@ function azLeiste(){
   };
   let letzteY=innerHeight/2;
   let an=false, ausblenden=null, pid=null;
-  const start=e=>{ if(an) return;               // schon ein Finger drauf
+  const start=e=>{
+    // Ein neuer Finger uebernimmt IMMER. Ein hängengebliebenes "es ist schon einer drauf"
+    // wuerde die Leiste dauerhaft blockieren, falls ein Loslassen mal nicht ankommt —
+    // genau das zeigt das Video: Etikett klebt auf X, Liste ruehrt sich nicht mehr.
+    if(an) aufraeumen();
     an=true; pid=e.pointerId; bar.classList.add("aktiv");
     _azZieht=true; document.documentElement.classList.add("azzieht");
     // Ausblenden des VORIGEN Zugs abbrechen: sonst verschwindet das Etikett
@@ -1292,12 +1300,18 @@ function azLeiste(){
   // mit seiner eigenen Hoehe dazwischenfunken und die Liste wegreissen.
   const zieh=e=>{ if(!an || e.pointerId!==pid)return; e.preventDefault();
     letzteY=e.clientY; springe(weiter(e)); };
-  const ende=e=>{ if(!an || (e&&e.pointerId!=null&&e.pointerId!==pid))return; an=false; pid=null;
+  const aufraeumen=()=>{
+    if(!an) return;
+    an=false;
     // Griff freigeben, sonst bekommt die Seite anschliessend keine Beruehrungen mehr.
-    try{ if(e&&e.pointerId!=null) bar.releasePointerCapture(e.pointerId); }catch(_){}
+    try{ if(pid!=null) bar.releasePointerCapture(pid); }catch(_){}
+    pid=null;
     _azZieht=false; document.documentElement.classList.remove("azzieht"); syncBar();
     bar.classList.remove("aktiv");
-    ausblenden=setTimeout(()=>{ lab.classList.remove("an"); ausblenden=null; },450); };
+    if(ausblenden) clearTimeout(ausblenden);
+    ausblenden=setTimeout(()=>{ lab.classList.remove("an"); ausblenden=null; },260);
+  };
+  const ende=e=>{ if(e&&e.pointerId!=null&&pid!=null&&e.pointerId!==pid) return; aufraeumen(); };
   bar.addEventListener("pointerdown",start);
   bar.addEventListener("pointermove",zieh);
   // Bei jedem Neuzeichnen entsteht eine neue Leiste. Die Lauscher am FENSTER wuerden
@@ -1308,6 +1322,12 @@ function azLeiste(){
   const sig=_azLauscher.signal;
   addEventListener("pointerup",ende,{signal:sig});
   addEventListener("pointercancel",ende,{signal:sig});
+  // Nimmt der Browser den Griff weg (App-Wechsel, Systemgeste, Mitteilung), kommt weder
+  // pointerup noch pointercancel — aber lostpointercapture. Dazu der Wechsel in den
+  // Hintergrund als letzte Sicherung. Ohne die bleibt die Leiste haengen.
+  bar.addEventListener("lostpointercapture",()=>aufraeumen(),{signal:sig});
+  addEventListener("visibilitychange",()=>{ if(document.hidden) aufraeumen(); },{signal:sig});
+  addEventListener("blur",()=>aufraeumen(),{signal:sig});
 }
 
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
