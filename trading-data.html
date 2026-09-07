@@ -695,6 +695,9 @@ function render(){
   }
   // Portfolio-Summe
   let tReal=0,tUnreal=0,tDiv=0,tDivOff=0,tCur=0,tGes=0,tSteuer=0,tCash=0,tZins=0,tZinsOff=0,tBonus=0,tTilg=0;
+  // Je Broker getrennt: nur so laesst sich die Zahl mit der jeweiligen Broker-App
+  // vergleichen. Die Kopfsumme fuehrt beide zusammen und ist dafuer unbrauchbar.
+  const proBroker={};
   const metrics=state.positions.map(p=>{const m=compute(p);
     // *Eur-Felder sind schon korrekt umgerechnet: jede Buchung mit IHREM eigenen Tageskurs,
     // nur der heutige Depotwert mit dem aktuellen Kurs — kein pauschaler Kurs mehr fürs Ganze.
@@ -709,7 +712,12 @@ function render(){
     for(const t of (p.tx||[])) if(t.art==="tilg") tTilg+=(num(t.stueck)||0)*(num(t.kurs)||0);
 
     if(m.isCash){ tCash+=m.curValEur; } else if(m.hasKurs){ tUnreal+=m.unrealEur; tCur+=m.curValEur; }
-    tGes+=m.gesamtEur; return m;});
+    tGes+=m.gesamtEur;
+    const bk=(p.broker||"").trim()||"TR";   // leer = TR, so behandelt es der Rest des Tools auch
+    const e=proBroker[bk]||(proBroker[bk]={wert:0,ges:0});
+    if(m.isCash||m.hasKurs) e.wert+=m.curValEur;
+    e.ges+=m.gesamtEur;
+    return m;});
   // NICHT die Kaufsumme aller Buchungen als Basis (wie bei der einzelnen Position) — bei wiederbespielten
   // Positionen (Rebuys, Sparplan, reinvestierte Erlöse) zählt dasselbe Kapital dort mehrfach mit und
   // verwässert die Quote über Jahre hinweg. Stattdessen: eingesetztes Kapital = Depotwert − Gesamt.
@@ -776,6 +784,12 @@ function render(){
         const teile=[tBonus?`Gratisaktien ${emoney(tBonus).replace("+","")}`:"", tTilg?`Tilgungs-Erlöse ${emoney(tTilg).replace("+","")}`:""].filter(Boolean).join(" · ");
         return `<button class="divchip ${aus?"off":""}" onclick="toggleSonderGlobal()" title="${teile}&#10;&#10;Was Trade Republic aus seiner Performance-Kurve heraushaelt: Gratisaktien (Referral, Zusatzzahlung bei Uebernahme) und die Erloese aus Tilgungen ausgeknockter Zertifikate — die laufen dort als Kapitalmassnahmen-Rueckzahlung, damit die Grafik keine Spruenge macht (TR-Support, 06.09.2026).&#10;Haken aus = TR-Sicht. Die Zahl ist dann bewusst unvollstaendig: das Geld liegt real auf deinem Konto."><span class="cbox">${aus?"":"✓"}</span><span class="chiptxt">Sondererträge <span class="amt green">+${emoney(sum).replace("+","")}</span></span></button>`;})():""}
     </div>`:""}
+      ${(()=>{
+        const ks=Object.keys(proBroker).filter(k=>Math.abs(proBroker[k].wert)>0.01||Math.abs(proBroker[k].ges)>0.01);
+        if(ks.length<2) return "";                    // ein Broker -> die Kopfsumme sagt schon alles
+        ks.sort((a,b)=>proBroker[b].wert-proBroker[a].wert);
+        return `<div class="trhint" title="Depotwert und Gesamt je Broker. Zum Vergleich mit der jeweiligen Broker-App — die Kopfsumme oben fuehrt alle zusammen und passt zu keiner einzelnen App.">${
+          ks.map(k=>`${esc(k)} <b>${feur(proBroker[k].wert)}</b> · <b class="${cls(proBroker[k].ges)}">${signEur(proBroker[k].ges)}</b>`).join(" &nbsp;·&nbsp; ")}</div>`;})()}
       <div class="spacer"></div>
       <span class="fussmeta">${hasSym&&upd?`Kurse ${new Date(upd).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}`:""}
         <span class="badge" title="Aktuell gehaltene Wertpapiere (ohne geschlossene und ohne Cash)">${
