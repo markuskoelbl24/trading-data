@@ -302,13 +302,13 @@
   .azbar b.pkt{font-size:7px;opacity:.45}
   .azbar.aktiv b{color:var(--txt)}
   .azbar.aktiv b.pkt{opacity:.7}
-  /* In die Bildmitte, nicht neben die Leiste: dort liegt der Daumen drauf. */
-  .azlab{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:41;
-    width:84px;height:84px;border-radius:22px;background:rgba(18,24,32,.9);
-    border:1px solid var(--rule);backdrop-filter:blur(6px);
-    font:700 40px/1 var(--f-mono);color:var(--txt);pointer-events:none;
-    display:none;align-items:center;justify-content:center;
-    box-shadow:0 10px 34px rgba(0,0,0,.5)}
+  /* Dezenter Hinweis am LINKEN Rand auf Fingerhoehe: rechts liegt der Daumen,
+     mittig verdeckt es die Liste. Bewusst blass — es soll bestaetigen, nicht praesentieren. */
+  .azlab{position:fixed;left:12px;z-index:41;transform:translateY(-50%);
+    min-width:34px;height:34px;padding:0 8px;border-radius:11px;
+    background:rgba(18,24,32,.55);backdrop-filter:blur(4px);
+    font:700 19px/1 var(--f-mono);color:var(--txt);opacity:.72;pointer-events:none;
+    display:none;align-items:center;justify-content:center}
   .azlab.an{display:flex}
   @media (min-width:700px){ .azbar{display:none} }   /* am Rechner reicht die Suche */
   .toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%) translateY(16px);
@@ -1178,23 +1178,42 @@ function azLeiste(){
     const mo=o.top+o.height/2, mu=u.top+u.height/2;
     return (Math.max(mo,Math.min(e.clientY,mu))-mo)/(mu-mo)*(kinder.length-1);
   };
+  // Ziel ist IMMER ein Buchstabe, nie eine Position dazwischen. Stufenloses Mappen
+  // waere hier unbrauchbar: die Leiste ist ~230 px hoch, die Seite ueber 20.000 —
+  // ein Millimeter Daumen entspraeche anderthalb Bildschirmen, und Zwischenstaende
+  // landen irgendwo zwischen zwei Buchstabenbloecken. Stattdessen rastet es ein und
+  // gleitet weich hin: das Ziel darf sich waehrend der Fahrt aendern, die Bewegung
+  // laeuft einfach darauf zu.
+  let ziel=null, faehrt=false;
+  const fahrt=()=>{
+    const d=ziel-window.scrollY;
+    if(Math.abs(d)<1.5){ window.scrollTo(0,ziel); faehrt=false; return; }
+    window.scrollTo(0, window.scrollY+d*0.3);
+    requestAnimationFrame(fahrt);
+  };
   const springe=f=>{
     if(!anker.length) return;
-    const i=Math.max(0,Math.min(anker.length-1,Math.floor(f)));
-    const j=Math.min(anker.length-1,i+1), t=Math.max(0,Math.min(1,f-i));
-    window.scrollTo(0, anker[i]+(anker[j]-anker[i])*t);   // zwischen zwei Buchstaben interpolieren
-    const c=vorhanden[Math.round(f)];
+    const i=Math.max(0,Math.min(anker.length-1,Math.round(f)));
+    ziel=anker[i];
+    if(!faehrt){ faehrt=true; requestAnimationFrame(fahrt); }
+    const c=vorhanden[i];
     if(c && lab.textContent!==c) lab.textContent=c;
+    lab.style.top=Math.max(58, Math.min(letzteY, innerHeight-58))+"px";
     lab.classList.add("an");
   };
-  let an=false;
+  let letzteY=innerHeight/2;
+  let an=false, ausblenden=null;
   const start=e=>{ an=true; bar.classList.add("aktiv");
+    // Ausblenden des VORIGEN Zugs abbrechen: sonst verschwindet das Etikett
+    // mitten im neuen Zug, wenn man zweimal kurz hintereinander greift.
+    if(ausblenden){ clearTimeout(ausblenden); ausblenden=null; }
     // Ohne Capture liefert die Leiste keine Bewegungen mehr, sobald der Finger sie verlaesst.
     try{ bar.setPointerCapture(e.pointerId); }catch(_){}
     ankerBauen(); zieh(e); };
-  const zieh=e=>{ if(!an)return; e.preventDefault(); springe(indexVon(e)); };
+  const zieh=e=>{ if(!an)return; e.preventDefault(); letzteY=e.clientY; springe(indexVon(e)); };
   const ende=()=>{ if(!an)return; an=false;
-    bar.classList.remove("aktiv"); setTimeout(()=>{lab.classList.remove("an");},450); };
+    bar.classList.remove("aktiv");
+    ausblenden=setTimeout(()=>{ lab.classList.remove("an"); ausblenden=null; },450); };
   bar.addEventListener("pointerdown",start);
   bar.addEventListener("pointermove",zieh);
   addEventListener("pointerup",ende); addEventListener("pointercancel",ende);
