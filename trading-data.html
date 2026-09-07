@@ -1277,16 +1277,21 @@ function azLeiste(){
     angefordert=true; requestAnimationFrame(()=>{ angefordert=false; ausfuehren(offenF); }); };
   const ausfuehren=f=>{
     if(!anker.length) return;
-    // Zwischen den Ankern interpolieren: jede Fingerstellung landet an einer echten
-    // Stelle der Liste, und die Mitte eines Eintrags trifft seinen Buchstaben exakt.
-    const i=Math.max(0,Math.min(anker.length-1,Math.floor(f)));
-    const j=Math.min(anker.length-1,i+1), t=Math.max(0,Math.min(1,f-i));
-    window.scrollTo(0, Math.round(anker[i]+(anker[j]-anker[i])*t));
-    // Hysterese fuers Etikett: erst wechseln, wenn der Finger DEUTLICH im naechsten Feld
-    // steht. Ohne das flackert es an jeder Grenze zwischen zwei Buchstaben hin und her —
-    // das iPhone feuert mit 0,3-px-Zittern, gemessen 23 Wechsel bei 24 Ereignissen.
-    // Der Scroll bleibt davon unberuehrt, der laeuft weiter stufenlos.
-    if(gezeigt==null || Math.abs(f-gezeigt)>0.65) gezeigt=Math.round(f);
+    // JE BUCHSTABE EINRASTEN, nicht stufenlos. Nachgerechnet: die Seite ist 20.879 px
+    // lang, eine Karte 426 px hoch, die Leiste 580 px. Das sind 36 px Scroll je
+    // Finger-Pixel — bei normalem Ziehen wandert also fast eine ganze Karte pro Bild
+    // durch. Stufenlos SIEHT dabei zwangslaeufig sprunghaft aus, weil in jedem Bild
+    // etwas voellig anderes steht. (iOS-Kontakte haben 60-px-Zeilen, dort laufen 5,8
+    // Zeilen je Bild durch — das liest sich als fliessende Liste.)
+    // Mit Einrasten gibt es hoechstens 18 Bewegungen statt 60 je Sekunde, und jede
+    // landet den Buchstaben sauber unter der Kopfleiste. Ruhiger und ehrlicher.
+    //
+    // Die Hysterese entscheidet, WANN gewechselt wird: erst wenn der Finger deutlich
+    // im naechsten Feld steht. Ohne sie flackerte es an jeder Grenze (gemessen 23
+    // Wechsel bei 24 Ereignissen, weil das iPhone mit 0,3-px-Zittern feuert).
+    const vorher=gezeigt;
+    if(gezeigt==null || Math.abs(f-gezeigt)>0.65) gezeigt=Math.max(0,Math.min(anker.length-1,Math.round(f)));
+    if(gezeigt!==vorher) window.scrollTo(0, anker[gezeigt]);
     const c=vorhanden[gezeigt];
     if(c && lab.textContent!==c) lab.textContent=c;
     lab.style.top=Math.max(58, Math.min(letzteY, innerHeight-58))+"px";
