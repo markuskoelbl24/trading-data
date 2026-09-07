@@ -310,6 +310,10 @@
     font:700 19px/1 var(--f-mono);color:var(--txt);opacity:.72;pointer-events:none;
     display:none;align-items:center;justify-content:center}
   .azlab.an{display:flex}
+  /* Waehrend des Ziehens keine Weichzeichner: drei blur-Ebenen ueber einer 20.000-px-Seite
+     muessen bei JEDEM Bild neu zusammengesetzt werden — das allein reicht, um ein Handy
+     aus dem Takt zu bringen. Danach kommen sie zurueck. */
+  html.azzieht .sticky, html.azzieht .azbar, html.azzieht .azlab{backdrop-filter:none}
   @media (min-width:700px){ .azbar{display:none} }   /* am Rechner reicht die Suche */
   .toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%) translateY(16px);
     background:var(--green);color:#04120a;font-weight:700;padding:9px 16px;border-radius:999px;
@@ -693,7 +697,9 @@ function matchesQuery(p){
 }
 /* Leiste einblenden, sobald der Portfolio-Block weggescrollt ist. Endzustand hängt an
    der Klasse, nicht an einer Animation — bei eingefrorenen Animationen bleibt sie korrekt. */
+let _azZieht=false;   // waehrend des A-Z-Ziehens: kein Layout-Lesen pro Bild
 function syncBar(){
+  if(_azZieht) return;
   const bar=document.getElementById("sticky"), tot=document.getElementById("total");
   if(!bar||!tot) return;
   // Der Portfolio-Block ist hinter der Leiste verschwunden → statt des Titels die Zahlen zeigen.
@@ -1188,14 +1194,19 @@ function azLeiste(){
   const fahrt=()=>{
     const d=ziel-window.scrollY;
     if(Math.abs(d)<1.5){ window.scrollTo(0,ziel); faehrt=false; return; }
-    window.scrollTo(0, window.scrollY+d*0.3);
+    window.scrollTo(0, window.scrollY+d*0.45);
     requestAnimationFrame(fahrt);
   };
+  // Lange Wege NICHT ausanimieren. Ueber mehrere Bildschirme hinweg sieht man ohnehin
+  // nur Streifen, es kostet aber die meisten Bilder — und genau dort ruckelt es. Kurze
+  // Wege gleiten (das ist das, was man als fluessig wahrnimmt), lange setzen hart um.
+  const WEIT=innerHeight*2.5;
   const springe=f=>{
     if(!anker.length) return;
     const i=Math.max(0,Math.min(anker.length-1,Math.round(f)));
     ziel=anker[i];
-    if(!faehrt){ faehrt=true; requestAnimationFrame(fahrt); }
+    if(Math.abs(ziel-window.scrollY)>WEIT){ window.scrollTo(0,ziel); faehrt=false; }
+    else if(!faehrt){ faehrt=true; requestAnimationFrame(fahrt); }
     const c=vorhanden[i];
     if(c && lab.textContent!==c) lab.textContent=c;
     lab.style.top=Math.max(58, Math.min(letzteY, innerHeight-58))+"px";
@@ -1204,6 +1215,7 @@ function azLeiste(){
   let letzteY=innerHeight/2;
   let an=false, ausblenden=null;
   const start=e=>{ an=true; bar.classList.add("aktiv");
+    _azZieht=true; document.documentElement.classList.add("azzieht");
     // Ausblenden des VORIGEN Zugs abbrechen: sonst verschwindet das Etikett
     // mitten im neuen Zug, wenn man zweimal kurz hintereinander greift.
     if(ausblenden){ clearTimeout(ausblenden); ausblenden=null; }
@@ -1212,6 +1224,7 @@ function azLeiste(){
     ankerBauen(); zieh(e); };
   const zieh=e=>{ if(!an)return; e.preventDefault(); letzteY=e.clientY; springe(indexVon(e)); };
   const ende=()=>{ if(!an)return; an=false;
+    _azZieht=false; document.documentElement.classList.remove("azzieht"); syncBar();
     bar.classList.remove("aktiv");
     ausblenden=setTimeout(()=>{ lab.classList.remove("an"); ausblenden=null; },450); };
   bar.addEventListener("pointerdown",start);
