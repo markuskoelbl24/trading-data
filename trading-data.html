@@ -889,7 +889,7 @@ function render(){
       if(mitUeberschriften){
         const c=azBuchstabe(p.titel);
         if(c!==letzterB){ letzterB=c;
-          gruppe=document.createElement("div"); gruppe.className="grp";
+          gruppe=document.createElement("div"); gruppe.className="grp"; gruppe.dataset.init=c;
           const h=document.createElement("div");
           h.className="grpltr"; h.dataset.init=c; h.textContent=c;
           gruppe.appendChild(h); list.appendChild(gruppe); }
@@ -1214,9 +1214,15 @@ function azLeiste(){
     const kopf=(document.querySelector(".sticky")||{}).offsetHeight||44;
     const max=Math.max(0, document.documentElement.scrollHeight-innerHeight);
     anker=vorhanden.map(c=>{
-      // Wenn es Ueberschriften gibt, ist SIE das Ziel — dann steht der Buchstabe
-      // direkt unter der Kopfleiste und die erste Karte gleich darunter.
-      const k=document.querySelector('#list .grpltr[data-init="'+c+'"]')
+      // Ziel ist der GRUPPEN-KASTEN, nicht die Ueberschrift. Die klebt (position:sticky)
+      // und bleibt dabei immer innerhalb ihrer Gruppe: ist die Gruppe nach oben
+      // durchgelaufen, sitzt die Ueberschrift am UNTEREN Ende der Gruppe. Wer sie misst,
+      // bekommt fuer jeden Buchstaben oberhalb der aktuellen Stelle das Gruppenende
+      // statt des Anfangs — Ziehen nach oben landete dadurch systematisch zu weit unten.
+      // Gemessen: von Scroll 12.000 auf A gezogen landete bei 1.875 statt 474.
+      // Der Kasten selbst klebt nicht und liefert immer die wahre Position.
+      const k=document.querySelector('#list > .grp[data-init="'+c+'"]')
+            || document.querySelector('#list .grpltr[data-init="'+c+'"]')
             || karten.find(k=>k.dataset.init===c);
       if(!k) return 0;
       // 8px Luft unter die angedockte Kopfleiste, sonst klebt die Karte am Rand
