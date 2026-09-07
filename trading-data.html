@@ -705,7 +705,8 @@ function matchesQuery(p){
 }
 /* Leiste einblenden, sobald der Portfolio-Block weggescrollt ist. Endzustand hängt an
    der Klasse, nicht an einer Animation — bei eingefrorenen Animationen bleibt sie korrekt. */
-let _azZieht=false;   // waehrend des A-Z-Ziehens: kein Layout-Lesen pro Bild
+let _azZieht=false;      // waehrend des A-Z-Ziehens: kein Layout-Lesen pro Bild
+let _azLauscher=null;    // Fenster-Lauscher der aktuellen Leiste, zum Abraeumen
 function syncBar(){
   if(_azZieht) return;
   const bar=document.getElementById("sticky"), tot=document.getElementById("total");
@@ -1186,17 +1187,32 @@ function azLeiste(){
     });
     const kinder=[...bar.children]; nEintr=kinder.length;
     if(nEintr<2){ mo=0; mu=1; return; }
-    const o=kinder[0].getBoundingClientRect(), u=kinder[nEintr-1].getBoundingClientRect();
-    mo=o.top+o.height/2; mu=u.top+u.height/2;
+    const a=kinder[0], z=kinder[nEintr-1];
+    const ra=a.getBoundingClientRect(), rz=z.getBoundingClientRect();
+    mo=ra.top+ra.height/2; mu=rz.top+rz.height/2;
     if(!(mu>mo)) { mo=0; mu=1; nEintr=1; }        // Division durch Null verhindern
   };
-  // Fingerposition -> gebrochener Index, gegen die GEMESSENE Leiste. Von der MITTE des
-  // ersten bis zur MITTE des letzten Eintrags: dadurch trifft ein Tipp auf die Mitte
-  // eines Eintrags exakt seinen Buchstaben. Nur die Y-Achse zaehlt, X wird ignoriert —
-  // sonst reisst der Zug ab, sobald der Finger die schmale Leiste seitlich verlaesst.
-  const indexVon=e=>{
+  // WARUM RELATIV UND NICHT ABSOLUT
+  // Absolut zu rechnen ("wo auf dem Bildschirm ist der Finger, wo die Leiste") geht auf
+  // dem iPhone schief: Safaris Adressleiste klappt beim Scrollen ein und aus, und iOS
+  // zeichnet position:fixed dabei verzoegert. Leiste und Fingerkoordinate laufen fuer
+  // einen Moment auseinander, die Rechnung landet bei "ganz oben" und es springt zum
+  // ersten Buchstaben. Genau das war der Fehler.
+  // offsetY waere die naheliegende Abhilfe, ist aber unbrauchbar: es haengt an Zoom und
+  // Geraeteaufloesung (nachgemessen: hier exakt halbierte Werte).
+  // Deshalb: beim Aufsetzen EINMAL absolut bestimmen, danach nur noch die BEWEGUNG
+  // aufaddieren. Eine Verschiebung des Ansichtsfensters trifft zwei aufeinanderfolgende
+  // Messungen gleichermassen und kuerzt sich im Unterschied weg.
+  let fAkt=0, letztY=0;
+  const setzeStart=e=>{
+    fAkt = nEintr<2 ? 0 : (Math.max(mo,Math.min(e.clientY,mu))-mo)/(mu-mo)*(nEintr-1);
+    letztY=e.clientY;
+  };
+  const weiter=e=>{
     if(nEintr<2) return 0;
-    return (Math.max(mo,Math.min(e.clientY,mu))-mo)/(mu-mo)*(nEintr-1);
+    fAkt=Math.max(0, Math.min(nEintr-1, fAkt + (e.clientY-letztY)*(nEintr-1)/(mu-mo)));
+    letztY=e.clientY;
+    return fAkt;
   };
   // KEINE Animation. Die Geschmeidigkeit kommt vom Finger, nicht von einer Gleitfahrt —
   // ein Rollbalken animiert auch nie und fuehlt sich trotzdem fluessig an. Damit fallen
@@ -1230,11 +1246,11 @@ function azLeiste(){
     if(ausblenden){ clearTimeout(ausblenden); ausblenden=null; }
     // Ohne Capture liefert die Leiste keine Bewegungen mehr, sobald der Finger sie verlaesst.
     try{ bar.setPointerCapture(e.pointerId); }catch(_){}
-    messen(); zieh(e); };
+    messen(); setzeStart(e); springe(fAkt); };
   // Nur der Finger, der aufgesetzt hat: ein zweiter (oder der Handballen) wuerde sonst
   // mit seiner eigenen Hoehe dazwischenfunken und die Liste wegreissen.
   const zieh=e=>{ if(!an || e.pointerId!==pid)return; e.preventDefault();
-    letzteY=e.clientY; springe(indexVon(e)); };
+    letzteY=e.clientY; springe(weiter(e)); };
   const ende=e=>{ if(!an || (e&&e.pointerId!=null&&e.pointerId!==pid))return; an=false; pid=null;
     // Griff freigeben, sonst bekommt die Seite anschliessend keine Beruehrungen mehr.
     try{ if(e&&e.pointerId!=null) bar.releasePointerCapture(e.pointerId); }catch(_){}
@@ -1243,7 +1259,14 @@ function azLeiste(){
     ausblenden=setTimeout(()=>{ lab.classList.remove("an"); ausblenden=null; },450); };
   bar.addEventListener("pointerdown",start);
   bar.addEventListener("pointermove",zieh);
-  addEventListener("pointerup",ende); addEventListener("pointercancel",ende);
+  // Bei jedem Neuzeichnen entsteht eine neue Leiste. Die Lauscher am FENSTER wuerden
+  // sich sonst anhaeufen — nach 50 Renderings 50 tote Handler. Der alte Satz wird
+  // deshalb abgeraeumt, bevor der neue kommt.
+  if(_azLauscher) _azLauscher.abort();
+  _azLauscher=new AbortController();
+  const sig=_azLauscher.signal;
+  addEventListener("pointerup",ende,{signal:sig});
+  addEventListener("pointercancel",ende,{signal:sig});
 }
 
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
