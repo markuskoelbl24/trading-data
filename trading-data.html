@@ -302,9 +302,14 @@
   .azbar b.pkt{font-size:7px;opacity:.45}
   .azbar.aktiv b{color:var(--txt)}
   .azbar.aktiv b.pkt{opacity:.7}
-  .azlab{position:fixed;right:30px;z-index:41;background:var(--karte);border:1px solid var(--rule);
-    border-radius:9px;padding:5px 11px;font:700 17px/1 var(--f-mono);color:var(--txt);
-    box-shadow:0 4px 14px rgba(0,0,0,.45);pointer-events:none;display:none}
+  /* In die Bildmitte, nicht neben die Leiste: dort liegt der Daumen drauf. */
+  .azlab{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:41;
+    width:84px;height:84px;border-radius:22px;background:rgba(18,24,32,.9);
+    border:1px solid var(--rule);backdrop-filter:blur(6px);
+    font:700 40px/1 var(--f-mono);color:var(--txt);pointer-events:none;
+    display:none;align-items:center;justify-content:center;
+    box-shadow:0 10px 34px rgba(0,0,0,.5)}
+  .azlab.an{display:flex}
   @media (min-width:700px){ .azbar{display:none} }   /* am Rechner reicht die Suche */
   .toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%) translateY(16px);
     background:var(--green);color:#04120a;font-weight:700;padding:9px 16px;border-radius:999px;
@@ -1150,38 +1155,46 @@ function azLeiste(){
   const lab=document.createElement("div"); lab.className="azlab";
   document.body.appendChild(bar); document.body.appendChild(lab);
 
-  const springe=(c,y)=>{
-    const ziel=karten.find(k=>k.dataset.init===c); if(!ziel)return;
-    // 8px Luft unter die angedockte Kopfleiste, sonst klebt die Karte am Rand
+  // Anker: absolute Scroll-Position je Buchstabe. Einmal beim Aufsetzen berechnet —
+  // waehrend des Ziehens aendert sich die Liste nicht, jede Bewegung kostet dann nichts.
+  let anker=[];
+  const ankerBauen=()=>{
     const kopf=(document.querySelector(".sticky")||{}).offsetHeight||44;
-    window.scrollTo({top:ziel.getBoundingClientRect().top+window.scrollY-kopf-8, behavior:"auto"});
-    lab.textContent=c; lab.style.display="block";
-    lab.style.top=Math.max(70,Math.min(y-18,innerHeight-90))+"px";
+    const max=Math.max(0, document.documentElement.scrollHeight-innerHeight);
+    anker=vorhanden.map(c=>{
+      const k=karten.find(k=>k.dataset.init===c); if(!k) return 0;
+      // 8px Luft unter die angedockte Kopfleiste, sonst klebt die Karte am Rand
+      return Math.max(0, Math.min(max, k.getBoundingClientRect().top+window.scrollY-kopf-8));
+    });
   };
-  // Nur die Y-Achse zaehlt, X wird ignoriert: sonst reisst der Zug ab, sobald der Finger
-  // seitlich von der schmalen Leiste wandert — und schmal ist sie mit Absicht. Oberhalb
-  // und unterhalb wird geklemmt, damit man am Ende nicht ins Leere zieht. iOS macht es genauso.
-  const ausWert=e=>{
-    const kinder=[...bar.children]; if(!kinder.length) return null;
-    // Auf den ERSTEN und LETZTEN Buchstaben klemmen, nicht auf die Leiste: die hat oben
-    // und unten Polster ohne Buchstaben, dort liefe der Zug sonst ins Leere. So zieht man
-    // ueber das Ende hinaus und bleibt am Rand haengen, statt den Faden zu verlieren.
+  // Fingerposition -> gebrochener Index. Gemessen von der MITTE des ersten bis zur MITTE
+  // des letzten Eintrags: dadurch trifft ein Tipp auf die Mitte eines Eintrags exakt
+  // seinen Buchstaben, und dazwischen laeuft es stufenlos durch. Nur die Y-Achse zaehlt,
+  // X wird ignoriert — sonst reisst der Zug ab, sobald der Finger die schmale Leiste
+  // seitlich verlaesst. Ober- und unterhalb wird geklemmt.
+  const indexVon=e=>{
+    const kinder=[...bar.children]; if(kinder.length<2) return 0;
     const o=kinder[0].getBoundingClientRect(), u=kinder[kinder.length-1].getBoundingClientRect();
-    const y=Math.max(o.top+1, Math.min(e.clientY, u.bottom-1));
-    const treffer=kinder.find(k=>{const b=k.getBoundingClientRect(); return y>=b.top&&y<=b.bottom;});
-    return treffer?treffer.dataset.c:kinder[y<=o.top?0:kinder.length-1].dataset.c;
+    const mo=o.top+o.height/2, mu=u.top+u.height/2;
+    return (Math.max(mo,Math.min(e.clientY,mu))-mo)/(mu-mo)*(kinder.length-1);
   };
-  let an=false, letzter=null;
-  // letzter beim Aufsetzen zuruecksetzen: sonst springt derselbe Buchstabe nicht mehr,
-  // falls ein pointerup verlorenging (Finger aus dem Bildschirm gezogen).
-  const start=e=>{ an=true; letzter=null; bar.classList.add("aktiv");
+  const springe=f=>{
+    if(!anker.length) return;
+    const i=Math.max(0,Math.min(anker.length-1,Math.floor(f)));
+    const j=Math.min(anker.length-1,i+1), t=Math.max(0,Math.min(1,f-i));
+    window.scrollTo(0, anker[i]+(anker[j]-anker[i])*t);   // zwischen zwei Buchstaben interpolieren
+    const c=vorhanden[Math.round(f)];
+    if(c && lab.textContent!==c) lab.textContent=c;
+    lab.classList.add("an");
+  };
+  let an=false;
+  const start=e=>{ an=true; bar.classList.add("aktiv");
     // Ohne Capture liefert die Leiste keine Bewegungen mehr, sobald der Finger sie verlaesst.
     try{ bar.setPointerCapture(e.pointerId); }catch(_){}
-    zieh(e); };
-  const zieh=e=>{ if(!an)return; e.preventDefault();
-    const c=ausWert(e); if(c&&c!==letzter){ letzter=c; springe(c,e.clientY); } };
-  const ende=()=>{ if(!an)return; an=false; letzter=null;
-    bar.classList.remove("aktiv"); setTimeout(()=>{lab.style.display="none";},450); };
+    ankerBauen(); zieh(e); };
+  const zieh=e=>{ if(!an)return; e.preventDefault(); springe(indexVon(e)); };
+  const ende=()=>{ if(!an)return; an=false;
+    bar.classList.remove("aktiv"); setTimeout(()=>{lab.classList.remove("an");},450); };
   bar.addEventListener("pointerdown",start);
   bar.addEventListener("pointermove",zieh);
   addEventListener("pointerup",ende); addEventListener("pointercancel",ende);
