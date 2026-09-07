@@ -214,9 +214,20 @@
   /* Suche und Setup bleiben immer am rechten Rand — auch wenn die Kennzahlen fehlen */
   .sright{display:flex;align-items:center;gap:8px;flex:0 0 auto;margin-left:auto}
   .sticky.scrolled .skpis{display:flex}
-  .sticky input{flex:0 1 190px;min-width:0;background:var(--card2);border:1px solid var(--line);
-    color:var(--txt);border-radius:9px;padding:7px 10px;font-size:13px;display:none}
-  .sticky.q input{display:block}
+  /* 16px sind Pflicht: iOS Safari zoomt bei jedem Eingabefeld unter 16px automatisch
+     ins Bild — man tippt und die Seite springt. Dafuer etwas weniger Polsterung, damit
+     das Feld gleich gross bleibt. */
+  .qwrap{position:relative;flex:0 1 190px;min-width:0;display:none}
+  .sticky.q .qwrap{display:block}
+  .sticky input{width:100%;background:var(--card2);border:1px solid var(--line);
+    color:var(--txt);border-radius:9px;padding:5px 30px 5px 10px;font-size:16px}
+  /* Safari zeigt sein eigenes Loeschkreuz am iPhone nicht — wir bringen ein eigenes mit. */
+  .sticky input[type=search]::-webkit-search-cancel-button{display:none}
+  .qclear{position:absolute;right:3px;top:50%;transform:translateY(-50%);display:none;
+    width:26px;height:26px;padding:0;border:0;background:transparent;color:var(--muted);
+    font:400 19px/1 -apple-system,system-ui,sans-serif;cursor:pointer;border-radius:7px}
+  .qwrap.hat .qclear{display:flex;align-items:center;justify-content:center}
+  .qclear:active{background:var(--line);color:var(--txt)}
   .sticky.q .skpis{display:none!important}
   /* Beide Knoepfe exakt gleich gross und quadratisch, Zeichen optisch mittig */
   .sfind{background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:9px;
@@ -224,7 +235,7 @@
     display:inline-flex;align-items:center;justify-content:center;line-height:1}
   .sfind.gear{font-size:26px}
   @media (min-width:700px){                      /* Am Rechner ist Platz: Feld gleich sichtbar */
-    .sticky input{display:block}
+    .sticky .qwrap{display:block}
     .sticky.q.scrolled .skpis{display:flex!important}
   }
   .sortseg{display:inline-flex;background:var(--card2);border:1px solid var(--line);border-radius:9px;overflow:hidden}
@@ -346,8 +357,11 @@
     <div class="skpi"><span class="k">Gesamt</span><span class="v" id="sk_g">–</span></div>
   </div>
   <div class="sright">
-    <input id="q" type="search" inputmode="search" placeholder="Position suchen…" autocomplete="off"
-           oninput="setQuery(this.value)" onkeydown="if(event.key==='Escape')clearQuery()">
+    <span class="qwrap" id="qwrap">
+      <input id="q" type="search" inputmode="search" placeholder="Position suchen…" autocomplete="off"
+             oninput="setQuery(this.value)" onkeydown="if(event.key==='Escape')clearQuery()">
+      <button class="qclear" onclick="clearQuery()" aria-label="Suche leeren" tabindex="-1">✕</button>
+    </span>
     <button class="sfind" onclick="toggleSearch()" aria-label="Suchen">🔍</button>
     <button class="sfind gear" onclick="toggleBackup()" aria-label="Setup">⚙︎</button>
   </div>
@@ -694,8 +708,13 @@ function setJahr(y){ state.settings.jahr=y; save(); render(); }
    nach dem Schließen der App nicht erklären muss. Trifft Titel, Ticker, Broker, ISIN, Branche. */
 let _q="";
 function normQ(x){ return String(x||"").toLowerCase().trim(); }
-function setQuery(v){ _q=normQ(v); render(); }
-function clearQuery(){ _q=""; const i=document.getElementById("q"); if(i)i.value=""; syncBar(); render(); }
+function setQuery(v){ _q=normQ(v); qKreuz(); render(); }
+// Das Loeschkreuz nur zeigen, wenn auch etwas drinsteht.
+function qKreuz(){ const w=document.getElementById("qwrap"), i=document.getElementById("q");
+  if(w&&i) w.classList.toggle("hat", !!i.value); }
+function clearQuery(){ _q=""; const i=document.getElementById("q");
+  if(i){ i.value=""; i.focus(); }          // Feld bleibt offen, Tastatur bleibt stehen
+  qKreuz(); syncBar(); render(); }
 function toggleSearch(){
   const bar=document.getElementById("sticky"), i=document.getElementById("q");
   const an=!bar.classList.contains("q");
