@@ -1166,10 +1166,14 @@ function azLeiste(){
   const lab=document.createElement("div"); lab.className="azlab";
   document.body.appendChild(bar); document.body.appendChild(lab);
 
-  // Anker: absolute Scroll-Position je Buchstabe. Einmal beim Aufsetzen berechnet —
-  // waehrend des Ziehens aendert sich die Liste nicht, jede Bewegung kostet dann nichts.
-  let anker=[];
-  const ankerBauen=()=>{
+  // Alles EINMAL beim Aufsetzen messen: die Anker (Scroll-Position je Buchstabe) und die
+  // Lage der Leiste selbst. Waehrend des Ziehens aendert sich beides nicht — und wer die
+  // Leiste bei jeder Bewegung neu vermisst, holt sich einen fiesen Fehler ins Haus:
+  // auf iOS haengt eine position:fixed-Ebene waehrend des Scrollens kurz hinterher.
+  // Dann liegt die gemessene Leiste tiefer als der Finger, die Rechnung ergibt "ganz
+  // oben", und es springt fuer einen Moment zum ersten Buchstaben zurueck.
+  let anker=[], mo=0, mu=1, nEintr=2;
+  const messen=()=>{
     const kopf=(document.querySelector(".sticky")||{}).offsetHeight||44;
     const max=Math.max(0, document.documentElement.scrollHeight-innerHeight);
     anker=vorhanden.map(c=>{
@@ -1177,24 +1181,20 @@ function azLeiste(){
       // 8px Luft unter die angedockte Kopfleiste, sonst klebt die Karte am Rand
       return Math.max(0, Math.min(max, k.getBoundingClientRect().top+window.scrollY-kopf-8));
     });
+    const kinder=[...bar.children]; nEintr=kinder.length;
+    if(nEintr<2){ mo=0; mu=1; return; }
+    const o=kinder[0].getBoundingClientRect(), u=kinder[nEintr-1].getBoundingClientRect();
+    mo=o.top+o.height/2; mu=u.top+u.height/2;
+    if(!(mu>mo)) { mo=0; mu=1; nEintr=1; }        // Division durch Null verhindern
   };
-  // Fingerposition -> gebrochener Index. Gemessen von der MITTE des ersten bis zur MITTE
-  // des letzten Eintrags: dadurch trifft ein Tipp auf die Mitte eines Eintrags exakt
-  // seinen Buchstaben, und dazwischen laeuft es stufenlos durch. Nur die Y-Achse zaehlt,
-  // X wird ignoriert — sonst reisst der Zug ab, sobald der Finger die schmale Leiste
-  // seitlich verlaesst. Ober- und unterhalb wird geklemmt.
+  // Fingerposition -> gebrochener Index, gegen die GEMESSENE Leiste. Von der MITTE des
+  // ersten bis zur MITTE des letzten Eintrags: dadurch trifft ein Tipp auf die Mitte
+  // eines Eintrags exakt seinen Buchstaben. Nur die Y-Achse zaehlt, X wird ignoriert —
+  // sonst reisst der Zug ab, sobald der Finger die schmale Leiste seitlich verlaesst.
   const indexVon=e=>{
-    const kinder=[...bar.children]; if(kinder.length<2) return 0;
-    const o=kinder[0].getBoundingClientRect(), u=kinder[kinder.length-1].getBoundingClientRect();
-    const mo=o.top+o.height/2, mu=u.top+u.height/2;
-    return (Math.max(mo,Math.min(e.clientY,mu))-mo)/(mu-mo)*(kinder.length-1);
+    if(nEintr<2) return 0;
+    return (Math.max(mo,Math.min(e.clientY,mu))-mo)/(mu-mo)*(nEintr-1);
   };
-  // Ziel ist IMMER ein Buchstabe, nie eine Position dazwischen. Stufenloses Mappen
-  // waere hier unbrauchbar: die Leiste ist ~230 px hoch, die Seite ueber 20.000 —
-  // ein Millimeter Daumen entspraeche anderthalb Bildschirmen, und Zwischenstaende
-  // landen irgendwo zwischen zwei Buchstabenbloecken. Stattdessen rastet es ein und
-  // gleitet weich hin: das Ziel darf sich waehrend der Fahrt aendern, die Bewegung
-  // laeuft einfach darauf zu.
   // KEINE Animation. Die Geschmeidigkeit kommt vom Finger, nicht von einer Gleitfahrt —
   // ein Rollbalken animiert auch nie und fuehlt sich trotzdem fluessig an. Damit fallen
   // drei Probleme auf einmal weg: das Ruckeln auf langen Wegen, die Bilder, die eine
@@ -1213,17 +1213,21 @@ function azLeiste(){
     lab.classList.add("an");
   };
   let letzteY=innerHeight/2;
-  let an=false, ausblenden=null;
-  const start=e=>{ an=true; bar.classList.add("aktiv");
+  let an=false, ausblenden=null, pid=null;
+  const start=e=>{ if(an) return;               // schon ein Finger drauf
+    an=true; pid=e.pointerId; bar.classList.add("aktiv");
     _azZieht=true; document.documentElement.classList.add("azzieht");
     // Ausblenden des VORIGEN Zugs abbrechen: sonst verschwindet das Etikett
     // mitten im neuen Zug, wenn man zweimal kurz hintereinander greift.
     if(ausblenden){ clearTimeout(ausblenden); ausblenden=null; }
     // Ohne Capture liefert die Leiste keine Bewegungen mehr, sobald der Finger sie verlaesst.
     try{ bar.setPointerCapture(e.pointerId); }catch(_){}
-    ankerBauen(); zieh(e); };
-  const zieh=e=>{ if(!an)return; e.preventDefault(); letzteY=e.clientY; springe(indexVon(e)); };
-  const ende=e=>{ if(!an)return; an=false;
+    messen(); zieh(e); };
+  // Nur der Finger, der aufgesetzt hat: ein zweiter (oder der Handballen) wuerde sonst
+  // mit seiner eigenen Hoehe dazwischenfunken und die Liste wegreissen.
+  const zieh=e=>{ if(!an || e.pointerId!==pid)return; e.preventDefault();
+    letzteY=e.clientY; springe(indexVon(e)); };
+  const ende=e=>{ if(!an || (e&&e.pointerId!=null&&e.pointerId!==pid))return; an=false; pid=null;
     // Griff freigeben, sonst bekommt die Seite anschliessend keine Beruehrungen mehr.
     try{ if(e&&e.pointerId!=null) bar.releasePointerCapture(e.pointerId); }catch(_){}
     _azZieht=false; document.documentElement.classList.remove("azzieht"); syncBar();
