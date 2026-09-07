@@ -315,6 +315,13 @@
     font:700 19px/1 var(--f-mono);color:var(--txt);opacity:.72;pointer-events:none;
     display:none;align-items:center;justify-content:center}
   .azlab.an{display:flex}
+  /* Klebende Buchstaben-Ueberschrift in der Liste: bleibt unter der angedockten
+     Kopfleiste stehen, bis der naechste Buchstabe sie hochschiebt. Deckender
+     Hintergrund, damit die Karten sauber darunter durchlaufen. --kopf traegt die
+     aktuelle Hoehe der Kopfleiste, die wechselt beim Scrollen ihre Gestalt. */
+  .grpltr{position:sticky;top:var(--kopf,44px);z-index:20;background:var(--bg);
+    color:var(--muted);font:700 11.5px/1 var(--f-mono);letter-spacing:1px;
+    padding:9px 5px 6px;border-bottom:1px solid var(--rule)}
   /* Leiste und Etikett haben BEWUSST keinen backdrop-filter: eine festgepinnte,
      weichgezeichnete Ebene muss ihren Hintergrund bei jedem Scroll-Bild neu rechnen —
      und zwar dauerhaft, nicht nur beim Ziehen. Vorher war es genau falsch herum: der
@@ -713,6 +720,15 @@ function syncBar(){
   if(!bar||!tot) return;
   // Der Portfolio-Block ist hinter der Leiste verschwunden → statt des Titels die Zahlen zeigen.
   bar.classList.toggle("scrolled", tot.getBoundingClientRect().bottom < bar.offsetHeight+4);
+  kopfHoehe();
+}
+// Die Kopfleiste wechselt beim Scrollen ihre Gestalt und damit ihre Hoehe. Die klebenden
+// Buchstaben docken genau darunter an — deshalb liegt die Hoehe als CSS-Variable bereit.
+function kopfHoehe(){
+  const bar=document.getElementById("sticky"); if(!bar) return;
+  const h=bar.offsetHeight;
+  if(h && h!==window._kopfH){ window._kopfH=h;
+    document.documentElement.style.setProperty("--kopf", h+"px"); }
 }
 window.addEventListener("scroll", syncBar, {passive:true});
 let _warSchmal=_schmal();
@@ -863,8 +879,26 @@ function render(){
     if(sb==="name")return (p.titel||"").toLowerCase();
     if(sb==="gv")return -m.gesamt;
     return -(m.hasKurs?m.curVal:m.openCost);};   // Größe (Default): größte Position oben
+  // Bei Namens-Sortierung je Anfangsbuchstabe eine klebende Ueberschrift dazwischen.
+  // Nur dort sinnvoll: in "Groesse"/"G/V" stuenden gleiche Buchstaben verstreut.
+  // Jede Buchstabengruppe bekommt einen EIGENEN Kasten. Ohne den kleben alle
+  // Ueberschriften im selben Container und stapeln sich oben uebereinander, statt
+  // dass die naechste die vorige hochschiebt — das ist der ganze Reiz daran.
+  let letzterB=null, gruppe=null;
+  const mitUeberschriften = sb==="name" && openIdx.length>=12;
   [...openIdx].sort((a,b)=>{const ka=keyOf(a),kb=keyOf(b);return ka<kb?-1:ka>kb?1:0;})
-    .forEach(idx=>list.appendChild(renderPos(state.positions[idx],metrics[idx],idx)));
+    .forEach(idx=>{
+      const p=state.positions[idx];
+      if(mitUeberschriften){
+        const c=azBuchstabe(p.titel);
+        if(c!==letzterB){ letzterB=c;
+          gruppe=document.createElement("div"); gruppe.className="grp";
+          const h=document.createElement("div");
+          h.className="grpltr"; h.dataset.init=c; h.textContent=c;
+          gruppe.appendChild(h); list.appendChild(gruppe); }
+      }
+      (gruppe||list).appendChild(renderPos(p,metrics[idx],idx));
+    });
   // Geschlossene in einklappbaren Bereich unten
   if(closedIdx.length){
     const sec=document.createElement("details");
@@ -1149,7 +1183,10 @@ function azLeiste(){
   // ein Buchstabe springt mal nach oben, mal nach unten — ein Index, der nicht ordnet,
   // verwirrt mehr als er hilft. In "Größe"/"G/V" bleibt die Suche der schnellere Weg.
   if((state.settings.sortBy||"size")!=="name") return;
-  const karten=[...document.querySelectorAll("#list > .pos")];
+  kopfHoehe();
+  // Karten liegen je nach Sortierung direkt in der Liste oder in ihrer Buchstabengruppe.
+  // Die geschlossenen Positionen im Aufklappbereich bleiben bewusst aussen vor.
+  const karten=[...document.querySelectorAll("#list > .pos, #list > .grp > .pos")];
   // Unter ~12 Karten scrollt man schneller mit dem Daumen als ueber einen Index.
   if(karten.length<12) return;
   const vorhanden=[...new Set(karten.map(k=>k.dataset.init))]
@@ -1181,7 +1218,11 @@ function azLeiste(){
     const kopf=(document.querySelector(".sticky")||{}).offsetHeight||44;
     const max=Math.max(0, document.documentElement.scrollHeight-innerHeight);
     anker=vorhanden.map(c=>{
-      const k=karten.find(k=>k.dataset.init===c); if(!k) return 0;
+      // Wenn es Ueberschriften gibt, ist SIE das Ziel — dann steht der Buchstabe
+      // direkt unter der Kopfleiste und die erste Karte gleich darunter.
+      const k=document.querySelector('#list .grpltr[data-init="'+c+'"]')
+            || karten.find(k=>k.dataset.init===c);
+      if(!k) return 0;
       // 8px Luft unter die angedockte Kopfleiste, sonst klebt die Karte am Rand
       return Math.max(0, Math.min(max, k.getBoundingClientRect().top+window.scrollY-kopf-8));
     });
