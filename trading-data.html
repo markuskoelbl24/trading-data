@@ -1144,14 +1144,26 @@ function azLeiste(){
     lab.textContent=c; lab.style.display="block";
     lab.style.top=Math.max(70,Math.min(y-18,innerHeight-90))+"px";
   };
+  // Nur die Y-Achse zaehlt, X wird ignoriert: sonst reisst der Zug ab, sobald der Finger
+  // seitlich von der schmalen Leiste wandert — und schmal ist sie mit Absicht. Oberhalb
+  // und unterhalb wird geklemmt, damit man am Ende nicht ins Leere zieht. iOS macht es genauso.
   const ausWert=e=>{
-    const el=document.elementFromPoint(e.clientX,e.clientY);
-    return (el&&el.dataset&&el.dataset.c)?el.dataset.c:null;
+    const kinder=[...bar.children]; if(!kinder.length) return null;
+    // Auf den ERSTEN und LETZTEN Buchstaben klemmen, nicht auf die Leiste: die hat oben
+    // und unten Polster ohne Buchstaben, dort liefe der Zug sonst ins Leere. So zieht man
+    // ueber das Ende hinaus und bleibt am Rand haengen, statt den Faden zu verlieren.
+    const o=kinder[0].getBoundingClientRect(), u=kinder[kinder.length-1].getBoundingClientRect();
+    const y=Math.max(o.top+1, Math.min(e.clientY, u.bottom-1));
+    const treffer=kinder.find(k=>{const b=k.getBoundingClientRect(); return y>=b.top&&y<=b.bottom;});
+    return treffer?treffer.dataset.c:kinder[y<=o.top?0:kinder.length-1].dataset.c;
   };
   let an=false, letzter=null;
   // letzter beim Aufsetzen zuruecksetzen: sonst springt derselbe Buchstabe nicht mehr,
   // falls ein pointerup verlorenging (Finger aus dem Bildschirm gezogen).
-  const start=e=>{ an=true; letzter=null; bar.classList.add("aktiv"); zieh(e); };
+  const start=e=>{ an=true; letzter=null; bar.classList.add("aktiv");
+    // Ohne Capture liefert die Leiste keine Bewegungen mehr, sobald der Finger sie verlaesst.
+    try{ bar.setPointerCapture(e.pointerId); }catch(_){}
+    zieh(e); };
   const zieh=e=>{ if(!an)return; e.preventDefault();
     const c=ausWert(e); if(c&&c!==letzter){ letzter=c; springe(c,e.clientY); } };
   const ende=()=>{ if(!an)return; an=false; letzter=null;
