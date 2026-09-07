@@ -228,6 +228,11 @@
     font:400 19px/1 -apple-system,system-ui,sans-serif;cursor:pointer;border-radius:7px}
   .qwrap.hat .qclear{display:flex;align-items:center;justify-content:center}
   .qclear:active{background:var(--line);color:var(--txt)}
+  /* Waehrend gesucht wird, ist die Portfolio-Uebersicht im Weg: sie schiebt die Treffer
+     unter den Bildrand, und man muss erst daran vorbeiscrollen. Also weg damit — der
+     Depotwert interessiert beim Suchen nicht, und die Treffer stehen direkt unter der
+     Suchzeile. */
+  html.suche #total{display:none}
   .sticky.q .skpis{display:none!important}
   /* Beide Knoepfe exakt gleich gross und quadratisch, Zeichen optisch mittig */
   .sfind{background:var(--card2);border:1px solid var(--line);color:var(--txt);border-radius:9px;
@@ -708,12 +713,22 @@ function setJahr(y){ state.settings.jahr=y; save(); render(); }
    nach dem Schließen der App nicht erklären muss. Trifft Titel, Ticker, Broker, ISIN, Branche. */
 let _q="";
 function normQ(x){ return String(x||"").toLowerCase().trim(); }
-function setQuery(v){ _q=normQ(v); qKreuz(); render(); }
+function setQuery(v){
+  const warLeer=!_q;
+  _q=normQ(v); qKreuz();
+  document.documentElement.classList.toggle("suche", !!_q);
+  render();
+  // Nur beim ERSTEN Zeichen nach oben holen. Bei jedem Tastendruck zu scrollen wuerde
+  // einen zurueckreissen, sobald man in den Treffern nach unten gewandert ist.
+  if(_q && warLeer) window.scrollTo(0,0);
+  syncBar();
+}
 // Das Loeschkreuz nur zeigen, wenn auch etwas drinsteht.
 function qKreuz(){ const w=document.getElementById("qwrap"), i=document.getElementById("q");
   if(w&&i) w.classList.toggle("hat", !!i.value); }
 function clearQuery(){ _q=""; const i=document.getElementById("q");
   if(i){ i.value=""; i.focus(); }          // Feld bleibt offen, Tastatur bleibt stehen
+  document.documentElement.classList.remove("suche");
   qKreuz(); syncBar(); render(); }
 function toggleSearch(){
   const bar=document.getElementById("sticky"), i=document.getElementById("q");
