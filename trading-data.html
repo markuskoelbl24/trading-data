@@ -309,16 +309,9 @@
   .azbar.aktiv b.pkt{opacity:.7}
   /* Dezenter Hinweis am LINKEN Rand auf Fingerhoehe: rechts liegt der Daumen,
      mittig verdeckt es die Liste. Bewusst blass — es soll bestaetigen, nicht praesentieren. */
-  /* Deutlich als schwebend erkennbar — sonst liest man es als verirrten Buchstaben
-     zwischen den Karten. Im Video sieht man genau das: ein einzelnes "A" mitten auf
-     einer Position. Also Rahmen, Schatten, deckender Grund. */
-  .azlab{position:fixed;left:10px;z-index:41;transform:translateY(-50%);
-    min-width:38px;height:32px;padding:0 9px;border-radius:16px;
-    background:rgba(10,14,19,.9);border:1px solid var(--rule);
-    font:700 17px/1 var(--f-mono);color:var(--txt);pointer-events:none;
-    display:none;align-items:center;justify-content:center;
-    box-shadow:0 3px 10px rgba(0,0,0,.5)}
-  .azlab.an{display:flex}
+  /* Kein schwebendes Etikett mehr: seit es die klebenden Buchstaben-Ueberschriften
+     gibt, steht der Buchstabe ohnehin oben im Bild — an seinem Platz und im Takt des
+     Scrollens. Das Etikett hat nur noch Karten verdeckt. iOS macht es genauso. */
   /* Klebende Buchstaben-Ueberschrift in der Liste: bleibt unter der angedockten
      Kopfleiste stehen, bis der naechste Buchstabe sie hochschiebt. Deckender
      Hintergrund, damit die Karten sauber darunter durchlaufen. --kopf traegt die
@@ -1182,7 +1175,7 @@ function azBuchstabe(titel){
   return /[A-Z]/.test(c) ? c : "#";
 }
 function azLeiste(){
-  document.querySelectorAll(".azbar,.azlab").forEach(e=>e.remove());
+  document.querySelectorAll(".azbar,.azlab").forEach(e=>e.remove());   // .azlab: Altbestand
   // Nur bei Namens-Sortierung. Sonst stehen gleiche Anfangsbuchstaben verstreut, und
   // ein Buchstabe springt mal nach oben, mal nach unten — ein Index, der nicht ordnet,
   // verwirrt mehr als er hilft. In "Größe"/"G/V" bleibt die Suche der schnellere Weg.
@@ -1208,8 +1201,7 @@ function azLeiste(){
     const zeigen=beschriftet.has(i);
     return `<b data-c="${c}"${zeigen?"":' class="pkt"'}>${zeigen?c:"•"}</b>`;
   }).join("");
-  const lab=document.createElement("div"); lab.className="azlab";
-  document.body.appendChild(bar); document.body.appendChild(lab);
+  document.body.appendChild(bar);
 
   // Alles EINMAL beim Aufsetzen messen: die Anker (Scroll-Position je Buchstabe) und die
   // Lage der Leiste selbst. Waehrend des Ziehens aendert sich beides nicht — und wer die
@@ -1292,13 +1284,8 @@ function azLeiste(){
     const vorher=gezeigt;
     if(gezeigt==null || Math.abs(f-gezeigt)>0.65) gezeigt=Math.max(0,Math.min(anker.length-1,Math.round(f)));
     if(gezeigt!==vorher) window.scrollTo(0, anker[gezeigt]);
-    const c=vorhanden[gezeigt];
-    if(c && lab.textContent!==c) lab.textContent=c;
-    lab.style.top=Math.max(58, Math.min(letzteY, innerHeight-58))+"px";
-    lab.classList.add("an");
   };
-  let letzteY=innerHeight/2;
-  let an=false, ausblenden=null, pid=null;
+  let an=false, pid=null;
   const start=e=>{
     // Ein neuer Finger uebernimmt IMMER. Ein hängengebliebenes "es ist schon einer drauf"
     // wuerde die Leiste dauerhaft blockieren, falls ein Loslassen mal nicht ankommt —
@@ -1306,9 +1293,6 @@ function azLeiste(){
     if(an) aufraeumen();
     an=true; pid=e.pointerId; bar.classList.add("aktiv");
     _azZieht=true; document.documentElement.classList.add("azzieht");
-    // Ausblenden des VORIGEN Zugs abbrechen: sonst verschwindet das Etikett
-    // mitten im neuen Zug, wenn man zweimal kurz hintereinander greift.
-    if(ausblenden){ clearTimeout(ausblenden); ausblenden=null; }
     // Ohne Capture liefert die Leiste keine Bewegungen mehr, sobald der Finger sie verlaesst.
     try{ bar.setPointerCapture(e.pointerId); }catch(_){}
     messen(); letztGut=null; verdaechtig=null; gezeigt=null;
@@ -1317,7 +1301,7 @@ function azLeiste(){
   // mit seiner eigenen Hoehe dazwischenfunken und die Liste wegreissen.
   const zieh=e=>{ if(!an || e.pointerId!==pid)return; e.preventDefault();
     if(!geprueft(e)) return;                      // Ausreisser: dieses Ereignis auslassen
-    letzteY=e.clientY; springe(indexVon(e)); };
+    springe(indexVon(e)); };
   const aufraeumen=()=>{
     if(!an) return;
     an=false;
@@ -1326,8 +1310,6 @@ function azLeiste(){
     pid=null;
     _azZieht=false; document.documentElement.classList.remove("azzieht"); syncBar();
     bar.classList.remove("aktiv");
-    if(ausblenden) clearTimeout(ausblenden);
-    ausblenden=setTimeout(()=>{ lab.classList.remove("an"); ausblenden=null; },260);
   };
   const ende=e=>{ if(e&&e.pointerId!=null&&pid!=null&&e.pointerId!==pid) return; aufraeumen(); };
   bar.addEventListener("pointerdown",start);
