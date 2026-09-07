@@ -1237,27 +1237,33 @@ function azLeiste(){
     mo=ra.top+ra.height/2; mu=rz.top+rz.height/2;
     if(!(mu>mo)) { mo=0; mu=1; nEintr=1; }        // Division durch Null verhindern
   };
-  // WARUM RELATIV UND NICHT ABSOLUT
-  // Absolut zu rechnen ("wo auf dem Bildschirm ist der Finger, wo die Leiste") geht auf
-  // dem iPhone schief: Safaris Adressleiste klappt beim Scrollen ein und aus, und iOS
-  // zeichnet position:fixed dabei verzoegert. Leiste und Fingerkoordinate laufen fuer
-  // einen Moment auseinander, die Rechnung landet bei "ganz oben" und es springt zum
-  // ersten Buchstaben. Genau das war der Fehler.
-  // offsetY waere die naheliegende Abhilfe, ist aber unbrauchbar: es haengt an Zoom und
-  // Geraeteaufloesung (nachgemessen: hier exakt halbierte Werte).
-  // Deshalb: beim Aufsetzen EINMAL absolut bestimmen, danach nur noch die BEWEGUNG
-  // aufaddieren. Eine Verschiebung des Ansichtsfensters trifft zwei aufeinanderfolgende
-  // Messungen gleichermassen und kuerzt sich im Unterschied weg.
-  let fAkt=0, letztY=0;
-  const setzeStart=e=>{
-    fAkt = nEintr<2 ? 0 : (Math.max(mo,Math.min(e.clientY,mu))-mo)/(mu-mo)*(nEintr-1);
-    letztY=e.clientY;
-  };
-  const weiter=e=>{
+  // ABSOLUT rechnen — mit Messung belegt (iPhone, 07.09.2026):
+  //   clientY 299 -> absolut 2,81 / relativ 16,54
+  //   clientY 437 -> absolut 8,92 / relativ 8,92   (direkt nach neuem Aufsetzen)
+  //   clientY 578 -> absolut 15,17 / relativ 11,24
+  // Die absolute Rechnung trifft, die relative driftet. Grund: das iPhone feuert
+  // Hunderte winziger Ereignisse (bis 878 in einem Zug) mit Deltas um 0,3 px. Beim
+  // Aufsummieren geht die Haelfte der Bewegung im Rauschen verloren und der Rest
+  // laeuft weg — nach ein paar Sekunden um dreizehn Buchstaben.
+  //
+  // Bleibt der Grund, warum ich es ueberhaupt relativ versucht hatte: einzelne
+  // Ereignisse mit unbrauchbarer Koordinate liessen die Liste zum ersten Buchstaben
+  // springen. Die faengt jetzt ein Ausreisser-Filter ab, statt das ganze Verfahren
+  // umzustellen: ein Satz von mehr als SPRUNG px in EINEM Ereignis ist bei 120 Hz
+  // physisch nicht moeglich (das waeren ueber 9.000 px/s). So ein Wert wird einmal
+  // uebersprungen — bestaetigt ihn das naechste Ereignis, wird er doch genommen.
+  // Damit blockiert der Filter keine echte schnelle Bewegung.
+  const SPRUNG=80;
+  let letztGut=null, verdaechtig=null;
+  const indexVon=e=>{
     if(nEintr<2) return 0;
-    fAkt=Math.max(0, Math.min(nEintr-1, fAkt + (e.clientY-letztY)*(nEintr-1)/(mu-mo)));
-    letztY=e.clientY;
-    return fAkt;
+    return (Math.max(mo,Math.min(e.clientY,mu))-mo)/(mu-mo)*(nEintr-1);
+  };
+  const geprueft=e=>{
+    const y=e.clientY;
+    if(letztGut==null || Math.abs(y-letztGut)<=SPRUNG){ letztGut=y; verdaechtig=null; return true; }
+    if(verdaechtig!=null && Math.abs(y-verdaechtig)<=SPRUNG){ letztGut=y; verdaechtig=null; return true; }
+    verdaechtig=y; return false;          // einmal aussetzen, nicht springen
   };
   // KEINE Animation. Die Geschmeidigkeit kommt vom Finger, nicht von einer Gleitfahrt —
   // ein Rollbalken animiert auch nie und fuehlt sich trotzdem fluessig an. Damit fallen
@@ -1295,11 +1301,13 @@ function azLeiste(){
     if(ausblenden){ clearTimeout(ausblenden); ausblenden=null; }
     // Ohne Capture liefert die Leiste keine Bewegungen mehr, sobald der Finger sie verlaesst.
     try{ bar.setPointerCapture(e.pointerId); }catch(_){}
-    messen(); setzeStart(e); springe(fAkt); };
+    messen(); letztGut=null; verdaechtig=null;
+    geprueft(e); springe(indexVon(e)); };
   // Nur der Finger, der aufgesetzt hat: ein zweiter (oder der Handballen) wuerde sonst
   // mit seiner eigenen Hoehe dazwischenfunken und die Liste wegreissen.
   const zieh=e=>{ if(!an || e.pointerId!==pid)return; e.preventDefault();
-    letzteY=e.clientY; springe(weiter(e)); };
+    if(!geprueft(e)) return;                      // Ausreisser: dieses Ereignis auslassen
+    letzteY=e.clientY; springe(indexVon(e)); };
   const aufraeumen=()=>{
     if(!an) return;
     an=false;
