@@ -297,7 +297,12 @@
   .azbar.aktiv{background:rgba(28,38,50,.92)}
   /* Feste Hoehe je Eintrag: Buchstaben und Punkte muessen gleich grosse Ziele sein,
      sonst waere der Griff ungleichmaessig — kleine Schrift, aber gleiches Feld. */
-  .azbar b{height:13px;display:flex;align-items:center;justify-content:center;
+  /* Die Eintraege fuellen die ganze Bahn statt mittig zusammenzuruecken: das ist der
+     Hebel gegen die Empfindlichkeit. 18 Buchstaben auf 234 px hiessen 89 px Scroll je
+     Finger-Pixel, auf 598 px sind es 35. Nach oben gedeckelt, damit bei wenigen
+     Buchstaben keine riesigen Felder entstehen. */
+  .azbar b{flex:1 1 0;min-height:14px;max-height:34px;
+    display:flex;align-items:center;justify-content:center;
     font:600 9.5px/1 var(--f-mono);color:var(--muted);letter-spacing:.2px}
   .azbar b.pkt{font-size:7px;opacity:.45}
   .azbar.aktiv b{color:var(--txt)}
@@ -1190,24 +1195,19 @@ function azLeiste(){
   // landen irgendwo zwischen zwei Buchstabenbloecken. Stattdessen rastet es ein und
   // gleitet weich hin: das Ziel darf sich waehrend der Fahrt aendern, die Bewegung
   // laeuft einfach darauf zu.
-  let ziel=null, faehrt=false;
-  const fahrt=()=>{
-    const d=ziel-window.scrollY;
-    if(Math.abs(d)<1.5){ window.scrollTo(0,ziel); faehrt=false; return; }
-    window.scrollTo(0, window.scrollY+d*0.45);
-    requestAnimationFrame(fahrt);
-  };
-  // Lange Wege NICHT ausanimieren. Ueber mehrere Bildschirme hinweg sieht man ohnehin
-  // nur Streifen, es kostet aber die meisten Bilder — und genau dort ruckelt es. Kurze
-  // Wege gleiten (das ist das, was man als fluessig wahrnimmt), lange setzen hart um.
-  const WEIT=innerHeight*2.5;
+  // KEINE Animation. Die Geschmeidigkeit kommt vom Finger, nicht von einer Gleitfahrt —
+  // ein Rollbalken animiert auch nie und fuehlt sich trotzdem fluessig an. Damit fallen
+  // drei Probleme auf einmal weg: das Ruckeln auf langen Wegen, die Bilder, die eine
+  // Animation kostet, und der Kampf gegen den Nutzer, wenn die Schleife nach dem
+  // Loslassen weiterlief und ihn beim eigenen Scrollen zurueckriss.
   const springe=f=>{
     if(!anker.length) return;
-    const i=Math.max(0,Math.min(anker.length-1,Math.round(f)));
-    ziel=anker[i];
-    if(Math.abs(ziel-window.scrollY)>WEIT){ window.scrollTo(0,ziel); faehrt=false; }
-    else if(!faehrt){ faehrt=true; requestAnimationFrame(fahrt); }
-    const c=vorhanden[i];
+    // Zwischen den Ankern interpolieren: jede Fingerstellung landet an einer echten
+    // Stelle der Liste, und die Mitte eines Eintrags trifft seinen Buchstaben exakt.
+    const i=Math.max(0,Math.min(anker.length-1,Math.floor(f)));
+    const j=Math.min(anker.length-1,i+1), t=Math.max(0,Math.min(1,f-i));
+    window.scrollTo(0, Math.round(anker[i]+(anker[j]-anker[i])*t));
+    const c=vorhanden[Math.round(f)];
     if(c && lab.textContent!==c) lab.textContent=c;
     lab.style.top=Math.max(58, Math.min(letzteY, innerHeight-58))+"px";
     lab.classList.add("an");
@@ -1223,7 +1223,9 @@ function azLeiste(){
     try{ bar.setPointerCapture(e.pointerId); }catch(_){}
     ankerBauen(); zieh(e); };
   const zieh=e=>{ if(!an)return; e.preventDefault(); letzteY=e.clientY; springe(indexVon(e)); };
-  const ende=()=>{ if(!an)return; an=false;
+  const ende=e=>{ if(!an)return; an=false;
+    // Griff freigeben, sonst bekommt die Seite anschliessend keine Beruehrungen mehr.
+    try{ if(e&&e.pointerId!=null) bar.releasePointerCapture(e.pointerId); }catch(_){}
     _azZieht=false; document.documentElement.classList.remove("azzieht"); syncBar();
     bar.classList.remove("aktiv");
     ausblenden=setTimeout(()=>{ lab.classList.remove("an"); ausblenden=null; },450); };
