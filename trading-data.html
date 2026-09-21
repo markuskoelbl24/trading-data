@@ -504,8 +504,12 @@ function compute(pos){
     }
     const devisen=devReal+devUnreal;
     // Cash-Konten sind immer EUR-nativ -> Eur-Felder = native Felder (keine Umrechnung nötig)
-    const gesamt=(divCounted?divs:0)+(steuerCounted?taxOptSum:0)+devisen;
-    return {tx:[],realized:0,realizedEur:0,openQty:0,openCost:0,openCostEur:0,avg:0,curVal:bal,curValEur:bal,unreal:0,unrealEur:0,divs,divsEur:divs,
+    // Erstattungen sind Steuer auf realisierte Trades, nur ohne Titel-Zuordnung. Sie zaehlen
+    // deshalb wie Realisiertes -- sonst reagiert "Realisiert" beim Steuer-Schalter mit der
+    // Brutto-Belastung, "Gesamt" aber netto, und die beiden Karten widersprechen sich.
+    const erstattet=steuerCounted?taxOptSum:0;
+    const gesamt=(divCounted?divs:0)+erstattet+devisen;
+    return {tx:[],realized:erstattet,realizedEur:erstattet,openQty:0,openCost:0,openCostEur:0,avg:0,curVal:bal,curValEur:bal,unreal:0,unrealEur:0,divs,divsEur:divs,
       gesamt,gesamtEur:gesamt,hasKurs:true,oversell:false,buyCostAll:0,
       gesamtPct:NaN,unrealPct:NaN,jahr:NaN,first:"",last:"",closed:false,days:0,perTx:{},kurs:bal,
       erstEinstieg:NaN,breakEven:NaN,beDelta:NaN,bePct:NaN,steuer:-taxOptSum,steuerCounted,taxOpt:taxOptSum,isCash:true,
@@ -570,7 +574,7 @@ function compute(pos){
   }
   // Steuer: standardmäßig NICHT eingerechnet (Kursbetrachtung vor Steuer).
   // Per Chip an der Position zuschaltbar — dann mindert sie Realisiert, Gesamt und hebt den Break-even.
-  const steuerCounted=!!pos.steuerOn || !!(state.settings&&state.settings.steuerGlobalOn);   // pro Position ODER global
+  const steuerCounted=!!(state.settings&&state.settings.steuerGlobalOn);   // nur der globale Schalter (je Position abgeschafft 21.09.2026)
   if(steuerCounted){ realized-=steuerSum; realizedEur-=steuerSum; }   // Steuer nur bei TR (immer EUR)
   const longLots=lots.filter(l=>l.side==="long");
   const openQty=longLots.reduce((s,l)=>s+l.q,0) - lots.filter(l=>l.side==="short").reduce((s,l)=>s+l.q,0);
@@ -599,10 +603,11 @@ function compute(pos){
   // Sie zählen in die Summen, aber NICHT in Break-even und Einstand — das ist ein anderer Play.
   // (Immer TR/EUR -> keine Fremdwährungs-Umrechnung nötig, in EUR und nativ identisch.)
   const summe=o=>Object.values(o||{}).reduce((a,b)=>a+(+b||0),0);
-  const archivReal=summe(pos.archiv), archivDivs=summe(pos.archivDiv), archivSteuer=summe(pos.archivSteuer);
+  const archivSteuer=summe(pos.archivSteuer), archivDivs=summe(pos.archivDiv);
+  const archivReal=summe(pos.archiv)-(steuerCounted?archivSteuer:0);   // netto wie das laufende Realisierte
   const divZ=divCounted?(divs-(bonusAb?bonus:0)):0, divZEur=divCounted?(divsEur-(bonusAb?bonusEur:0)):0;
-  const gesamt=realized+(hasKurs?unreal:0)+divZ+archivReal+(divCounted?archivDivs:0)-(steuerCounted?archivSteuer:0);
-  const gesamtEur=realizedEur+(hasKurs?unrealEur:0)+divZEur+archivReal+(divCounted?archivDivs:0)-(steuerCounted?archivSteuer:0);
+  const gesamt=realized+(hasKurs?unreal:0)+divZ+archivReal+(divCounted?archivDivs:0);
+  const gesamtEur=realizedEur+(hasKurs?unrealEur:0)+divZEur+archivReal+(divCounted?archivDivs:0);
   // Zeit & Jahresrendite
   const dates=tx.map(t=>t.datum).filter(Boolean).sort();
   const first=dates[0], last=dates[dates.length-1];
@@ -670,7 +675,7 @@ function unrealAtYearEnd(pos,y){
 }
 function yearStats(y){
   const fx=state.settings.fxRates||{};
-  let real=0,divs=0,steuer=0,trades=0,wert=0,fehlt=0,mitKurs=0,baseWert=0;
+  let real=0,divs=0,steuer=0,erstattet=0,trades=0,wert=0,fehlt=0,mitKurs=0,baseWert=0;
   const vor=String(+y-1);
   for(const p of state.positions){
     const cur=(p.currency||"EUR").toUpperCase();
@@ -685,6 +690,7 @@ function yearStats(y){
       steuer+=(num(t.steuer)||0);                          // Steuer nur bei TR (immer EUR)
     }
     for(const d of (p.div||[])) if(String(d.datum||"").slice(0,4)===y) divs+=(num(d.netto)||0)*fxVon(d,rate);
+    for(const d of (p.taxOpt||[])) if(String(d.datum||"").slice(0,4)===y) erstattet+=(num(d.betrag)||0);   // TR-Erstattungen (Cash-Konto)
     real+=(+((p.archiv||{})[y])||0);                       // verdichtete frühere Phasen (immer TR/EUR)
     divs+=(+((p.archivDiv||{})[y])||0);                    // verdichtete Dividenden (immer TR/EUR)
     if(p.cash) continue;                                   // Cash hat keine Kursänderung
@@ -703,9 +709,11 @@ function yearStats(y){
     const aVor=stateAsOf(p,vor+"-12-31");
     if(aVor.openQty>1e-9) baseWert += aVor.openQty*((p.yearPx||{})[vor])*rate;
   }
+  const steuerZ=state.settings.steuerGlobalOn;
+  if(steuerZ) real-=(steuer-erstattet);                    // derselbe Schalter wie oben: netto, sonst brutto
   const gesamt=real+divs+wert;
   const gesamtPct=baseWert>0?gesamt/baseWert*100:NaN;
-  return {real,divs,steuer,trades,wert,fehlt,mitKurs,gesamt,baseWert,gesamtPct};
+  return {real,divs,steuer,erstattet,steuerZ,trades,wert,fehlt,mitKurs,gesamt,baseWert,gesamtPct};
 }
 function setJahr(y){ state.settings.jahr=y; save(); render(); }
 
@@ -844,7 +852,7 @@ function render(){
       <div class="kpi"><div class="k">Wertänderung ${jy}</div><div class="v ${cls(y.wert)}">${y.mitKurs?signEur(y.wert):"–"}</div></div>
       <div class="kpi"><div class="k">Gesamt ${jy}</div><div class="v ${cls(y.gesamt)}">${signEur(y.gesamt)}</div>${isNaN(y.gesamtPct)?"":`<div class="v2">${fpct(y.gesamtPct)}</div>`}</div>
     </div>
-    <div class="hint" style="margin-top:6px">${y.trades} abgeschlossene Trade(s) · Dividenden ${feur(y.divs)} · Steuer ${feur(y.steuer)}${
+    <div class="hint" style="margin-top:6px">${y.trades} abgeschlossene Trade(s) · Dividenden ${feur(y.divs)} · Steuer ${feur(y.steuer)} einbehalten${y.erstattet?`, ${feur(y.erstattet)} erstattet`:""} (${y.steuerZ?"netto abgezogen":"nicht abgezogen"})${
       y.fehlt?` · <span class="red">${y.fehlt} Position(en) ohne Jahresend-Kurs</span> — die Wertänderung ist dort noch nicht drin (Kurse werden ab jetzt je Jahr festgehalten).`:""}</div>`;
     })()}
 
@@ -1178,10 +1186,9 @@ function renderPos(p,m,idx){
           const zaehlt=!p.divOff && !globalAus;                        // echter Zustand, nicht nur die lokale Marke
           const hinweis=globalAus?" · oben für alle abgeschaltet":"";
           return `<button class="divchip ${zaehlt?"":"off"}" onclick="toggleDivOff('${p.id}')" title="${wort} in Gesamt mitzählen${hinweis}"><span class="cbox">${zaehlt?"✓":""}</span>${wort} <span class="amt green">+${emoney(m.divs).replace("+","")}</span></button>`;})():""}
-        ${m.steuer?(()=>{
-          const zaehlt=!!p.steuerOn || !!state.settings.steuerGlobalOn;
-          const global=state.settings.steuerGlobalOn?" · oben für alle eingeschaltet":"";
-          return `<button class="divchip ${zaehlt?"":"off"}" onclick="toggleSteuer('${p.id}')" title="Einbehaltene Steuer abziehen — wirkt auch auf den Break-even${global}"><span class="cbox">${zaehlt?"✓":""}</span>Steuer <span class="amt red">−${emoney(m.steuer).replace("-","")}</span></button>`;})():""}
+        ${m.steuer?(()=>{                         // nur Anzeige -- ob sie zaehlt, entscheidet der Schalter oben
+          const zaehlt=!!state.settings.steuerGlobalOn;
+          return `<span class="divchip ${zaehlt?"":"off"}" title="Einbehaltene Steuer${zaehlt?" — abgezogen, hebt den Break-even":" — nicht abgezogen (Schalter oben)"}">Steuer <span class="amt red">−${emoney(m.steuer).replace("-","")}</span></span>`;})():""}
       </div>
       ${isDead?`<div class="warnmsg">⚠︎ Kein Kurs seit ${fdate(new Date(p.kursDead).toISOString().slice(0,10))} — zählt mit 0 €.</div>`:""}
       ${belowStop?`<div class="stopmsg">⚠︎ Kurs ${feur(m.kurs)} unter Stop ${feur(stopVal)}</div>`:""}
@@ -1394,21 +1401,11 @@ function toggleDivGlobal(){state.settings.divGlobalOff=!state.settings.divGlobal
 function toggleZinsGlobal(){state.settings.zinsGlobalOff=!state.settings.zinsGlobalOff;state.settings.zinsGlobalAt=Date.now();save();renderStable(ersteSichtbareKarte());syncPushLater();}
 function toggleSteuerGlobal(){state.settings.steuerGlobalOn=!state.settings.steuerGlobalOn;state.settings.steuerGlobalAt=Date.now();save();renderStable(ersteSichtbareKarte());syncPushLater();}
 function toggleSonderGlobal(){state.settings.sonderGlobalOff=!state.settings.sonderGlobalOff;state.settings.sonderGlobalAt=Date.now();save();renderStable(ersteSichtbareKarte());syncPushLater();}
-function toggleSteuer(pid){const p=find(pid);if(!p)return;p.steuerOn=!p.steuerOn;touch(p);save();renderStable(pid);syncPushLater();}
 function find(pid){return state.positions.find(p=>p.id===pid);}
 
-/* ---------- Live-Kurse (Twelve Data, CORS-offen, Gratis-Key) ---------- */
-const DAILY_CAP=800, RESERVE=5, AUTO_THROTTLE_MS=60000;
+/* ---------- Live-Kurse ---------- */
+const AUTO_THROTTLE_MS=60000;
 let priceBusy=false;
-function usageToday(){
-  const u=state.settings.priceUsage;
-  return (u && u.date===today()) ? (u.count||0) : 0;
-}
-function addUsage(n){
-  const cur=(state.settings.priceUsage && state.settings.priceUsage.date===today())
-    ? state.settings.priceUsage : {date:today(),count:0};
-  cur.count=(cur.count||0)+n; state.settings.priceUsage=cur;
-}
 function openSymbols(){
   return [...new Set(state.positions
     .filter(p=>compute(p).openQty>0 && (p.symbol||"").trim())
@@ -2167,10 +2164,6 @@ function saveGh(){
     path:val("f_ghpath").trim()||"trading.json",branch:val("f_ghbranch").trim()||"main"};
   save();toast("✓ Sync gespeichert");openBackup();
 }
-function saveApiKey(){
-  state.settings.apiKey=val("f_apikey").trim();save();
-  alert(state.settings.apiKey?"API-Key gespeichert.":"API-Key gelöscht.");closeSheet();render();
-}
 function exportJson(){
   const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);
@@ -2182,28 +2175,14 @@ function importJson(inp){
   rd.onload=()=>{try{const d=JSON.parse(rd.result);
     if(!d||!Array.isArray(d.positions))throw 0;
     if(!confirm("Aktuelle Daten durch Import ersetzen?"))return;
-    const prevKey=(state.settings&&state.settings.apiKey)||"";
     const prevGh=(state.settings&&state.settings.gh)||null;
     state=d;
     if(!state.settings)state.settings={};
     if(!state.tombstones)state.tombstones={};
-    if(!state.settings.apiKey && prevKey)state.settings.apiKey=prevKey;     // Key nicht verlieren
     if((!state.settings.gh || !state.settings.gh.token) && prevGh)state.settings.gh=prevGh; // Sync-Config/Token nicht verlieren
     save();closeSheet();render();
   }catch(e){alert("Datei nicht lesbar.");}};
   rd.readAsText(f);
-}
-function loadDemo(){
-  if(!confirm("Beispieldaten laden (ersetzt aktuelle Daten)?"))return;
-  state={positions:[{
-    id:uid(),branche:"Demo",titel:"FIFO-Beispiel",stop:"",kursAktuell:"90",notiz:"",
-    tx:[
-      {id:uid(),typ:"kauf",datum:"2026-01-02",stueck:"10",kurs:"100",gebuehr:"0",notiz:"teuer gekauft"},
-      {id:uid(),typ:"kauf",datum:"2026-01-05",stueck:"10",kurs:"80",gebuehr:"0",notiz:"tiefer nachgekauft"},
-      {id:uid(),typ:"verkauf",datum:"2026-01-08",stueck:"10",kurs:"90",gebuehr:"0",notiz:"Hälfte in der Mitte verkauft"}
-    ],div:[]
-  }]};
-  save();closeSheet();render();
 }
 
 /* ---------- Trade-Republic-CSV-Import (Buchungen ergänzen, Steuer/trid nachtragen) ---------- */
